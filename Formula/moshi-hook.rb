@@ -5,20 +5,20 @@
 class MoshiHook < Formula
   desc "Portable daemon + CLI that bridges AI coding agents to the Moshi mobile app"
   homepage "https://getmoshi.app"
-  version "0.1.0"
+  version "0.1.1"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://cdn.getmoshi.app/hook/v0.1.0/moshi-hook_Darwin_x86_64.tar.gz"
-      sha256 "8b68f9573f8ff79a63d15537aeb9d9011ce2e22fc337421b99681ae0beebcadb"
+      url "https://cdn.getmoshi.app/hook/v0.1.1/moshi-hook_Darwin_x86_64.tar.gz"
+      sha256 "da00144d3df64ca5f9be1f8241bcd3de52562080a3ba81e68e159e77bf4189a6"
 
       define_method(:install) do
         bin.install "moshi-hook"
       end
     end
     if Hardware::CPU.arm?
-      url "https://cdn.getmoshi.app/hook/v0.1.0/moshi-hook_Darwin_arm64.tar.gz"
-      sha256 "8dc25cc70c112d372785a163e65c1a3c9236125e03639192da6e43a766379fc1"
+      url "https://cdn.getmoshi.app/hook/v0.1.1/moshi-hook_Darwin_arm64.tar.gz"
+      sha256 "5845f79b63541de2494df768cc1d5c559b6cee3d784911b1a20922a87c642c26"
 
       define_method(:install) do
         bin.install "moshi-hook"
@@ -28,15 +28,15 @@ class MoshiHook < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://cdn.getmoshi.app/hook/v0.1.0/moshi-hook_Linux_x86_64.tar.gz"
-      sha256 "5e127f0cad02ef67cf7864b3361b85778a08f905d3f36c5ae3daf2d73b53f417"
+      url "https://cdn.getmoshi.app/hook/v0.1.1/moshi-hook_Linux_x86_64.tar.gz"
+      sha256 "fbd03c6ab35ad526489426e5f43582ea71d9949eaa7bc398e6be915c3e67ae40"
       define_method(:install) do
         bin.install "moshi-hook"
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://cdn.getmoshi.app/hook/v0.1.0/moshi-hook_Linux_arm64.tar.gz"
-      sha256 "a7cca47da5f9c60f325e4c912ec21f834a34155f4997810a4bb2060c7e0b1ba4"
+      url "https://cdn.getmoshi.app/hook/v0.1.1/moshi-hook_Linux_arm64.tar.gz"
+      sha256 "4a60d46beb712d0b76a77241acd6a7e674da6e48296f17283aa5e86541dc4659"
       define_method(:install) do
         bin.install "moshi-hook"
       end
