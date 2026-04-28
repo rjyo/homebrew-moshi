@@ -9,6 +9,8 @@ brew tap rjyo/moshi
 brew install moshi-hook
 ```
 
+Release tarballs are served from `cdn.getmoshi.app` — no GitHub token needed for the binary download.
+
 ## Run as a service
 
 `moshi-hook` is a daemon — pair it once, then keep it running in the background:

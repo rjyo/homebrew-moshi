@@ -41,6 +41,36 @@ After step 2, `claude` / `codex` / `opencode` route their hooks through `moshi-h
 
 Hidden subcommands (`claude-hook`, `codex-hook`, `opencode-event`, `opencode-permission`) are invoked by the agents themselves through the configs `install` writes — you won't run them by hand.
 
+## Tool-event hooks (opt-in)
+
+`install` does **not** wire `PreToolUse` / `PostToolUse` for Claude or Codex. They fire on every tool call (10–20 per turn) but the inbox row only renders one event at a time, so most users prefer the quieter default of just session start, prompts, approvals, and turn end.
+
+If you want a "Running Bash …" row to appear mid-turn, add the entry by hand. Re-running `moshi-hook install` won't touch user-added entries.
+
+**Claude** — append to `~/.claude/settings.json` under `hooks`:
+
+```json
+"PreToolUse": [
+  { "hooks": [{ "type": "command", "command": "/opt/homebrew/bin/moshi-hook claude-hook", "async": true }] }
+],
+"PostToolUse": [
+  { "hooks": [{ "type": "command", "command": "/opt/homebrew/bin/moshi-hook claude-hook", "async": true }] }
+]
+```
+
+**Codex** — append to `~/.codex/hooks.json` under `hooks`:
+
+```json
+"PreToolUse": [
+  { "hooks": [{ "type": "command", "command": "/opt/homebrew/bin/moshi-hook codex-hook" }] }
+],
+"PostToolUse": [
+  { "hooks": [{ "type": "command", "command": "/opt/homebrew/bin/moshi-hook codex-hook" }] }
+]
+```
+
+Replace `/opt/homebrew/bin/moshi-hook` with `which moshi-hook` if installed elsewhere. The dispatcher already throttles tool events to one push per 5 s per session.
+
 ## Paths
 
 | What | macOS | Linux |
