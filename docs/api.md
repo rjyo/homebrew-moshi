@@ -126,11 +126,22 @@ Every frame uses the same shape. Fields are optional, interpreted per `type`. Un
 
 ## 2. Moshi HTTP API
 
-Base URL: `https://api.getmoshi.app/api/v1` (override with `--base-url` / `MOSHI_API_BASE`). Auth: `Authorization: Bearer <hostSecret>` on every endpoint except `register`, which uses the pairing token.
+Base URL: `https://api.getmoshi.app/api/v1` (override with `--base-url` / `MOSHI_API_BASE`). Auth: `Authorization: Bearer <hostSecret>` on daemon runtime endpoints.
+
+### `POST /setup/host` -> `GET /setup/host/:setupId/wait`
+
+Easy Pair creates a short-lived setup session. The phone claims it with the user's app token and public SSH key. The host polls `wait` with the setup secret; after claim, the response includes the public key plus the host-scoped `hostSecret`.
+
+```jsonc
+{"hostId":"host_aBcD…","hostSecret":"secret_…","displayName":"jyo-mbp",
+ "publicKey":"ssh-ed25519 …","publicKeyFingerprint":"SHA256:…"}
+```
+
+The hook stores `hostId`, `hostSecret`, and `displayName`; it does not store the phone's user token.
 
 ### `POST /hosts/register`
 
-Pair this host. Authenticated with the **pairing token**.
+Manual daemon pairing/re-pairing. Authenticated with the **pairing token**.
 
 ```jsonc
 // request
