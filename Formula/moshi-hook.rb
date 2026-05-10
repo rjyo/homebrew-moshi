@@ -5,20 +5,20 @@
 class MoshiHook < Formula
   desc "Portable daemon + CLI that bridges AI coding agents to the Moshi mobile app"
   homepage "https://getmoshi.app"
-  version "0.1.9"
+  version "0.1.10"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://cdn.getmoshi.app/hook/v0.1.9/moshi-hook_Darwin_x86_64.tar.gz"
-      sha256 "039284e97eb811bc3f1405a2553ce8ca33c9d17b0747b44fb8eb7b1d803787c8"
+      url "https://cdn.getmoshi.app/hook/v0.1.10/moshi-hook_Darwin_x86_64.tar.gz"
+      sha256 "608408a3937610162cb095a2935df1a1b983ca402671e47c69cc9da6828b950d"
 
       define_method(:install) do
         bin.install "moshi-hook"
       end
     end
     if Hardware::CPU.arm?
-      url "https://cdn.getmoshi.app/hook/v0.1.9/moshi-hook_Darwin_arm64.tar.gz"
-      sha256 "4cc29e02c3a5fa82ef5db4c9346d589752fb04b499906d8ff228470f05a7d0a3"
+      url "https://cdn.getmoshi.app/hook/v0.1.10/moshi-hook_Darwin_arm64.tar.gz"
+      sha256 "b776d99de67ad0042efe0c9931e38e7733ce682db409da9ca2885bc8d7a5b138"
 
       define_method(:install) do
         bin.install "moshi-hook"
@@ -28,15 +28,15 @@ class MoshiHook < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://cdn.getmoshi.app/hook/v0.1.9/moshi-hook_Linux_x86_64.tar.gz"
-      sha256 "5c3de2ff3b61d8c1ab42fcf4b460ec1ee03af042d7fc2fe1747c0f9250511232"
+      url "https://cdn.getmoshi.app/hook/v0.1.10/moshi-hook_Linux_x86_64.tar.gz"
+      sha256 "d72259b57e4e7e4523cd431a4ce400d25f1b173bec3ba3aabac31c00594f49c6"
       define_method(:install) do
         bin.install "moshi-hook"
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://cdn.getmoshi.app/hook/v0.1.9/moshi-hook_Linux_arm64.tar.gz"
-      sha256 "0a5965cab6536f7fbed839dcdd029f99735234ebb9c0b8703c8719ce83af8f6f"
+      url "https://cdn.getmoshi.app/hook/v0.1.10/moshi-hook_Linux_arm64.tar.gz"
+      sha256 "400b55b3ca35f2853b6b77c8805c88158d9b4403ba973eba890cd7e0a901e9b1"
       define_method(:install) do
         bin.install "moshi-hook"
       end
