@@ -76,8 +76,8 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `host list` | List local Moshi host SSH pairings. |
 | `host revoke <id>` | Remove a Moshi host SSH key from `authorized_keys`. |
 | `host enable-ssh` | Help enable SSH prerequisites on macOS. |
-| `install` | Write Moshi entries into supported agent config files. Use `--target claude,codex,opencode,gemini,cursor,kimi,qwen` to limit the set. Non-destructive: leaves user-owned hooks alone. |
-| `uninstall` | Remove Moshi-owned entries from those files. |
+| `install` | Write Moshi entries into supported agent config files. Use `--target claude,codex,opencode,gemini,cursor,kimi,qwen` to limit the set. Non-destructive: leaves user-owned hooks alone. OpenCode installs globally by default; use `--local` for `.opencode/plugins` in the current project. |
+| `uninstall` | Remove Moshi-owned entries from those files. For OpenCode, pass `--local` to remove a project-local install. |
 | `serve` | Run the daemon in the foreground. Single-instance via `flock` on a lockfile next to the socket. |
 | `status [--json]` | Pairing state, paths, WS connection. |
 | `usage [--sync]` | Cached usage snapshots. `--sync` pushes them to the server. |
@@ -92,7 +92,7 @@ Hidden subcommands (`claude-hook`, `codex-hook`, `opencode-event`, `opencode-per
 |---|---|
 | Claude Code | `~/.claude/settings.json` |
 | Codex | `~/.codex/hooks.json` plus `~/.codex/config.toml` feature flag |
-| OpenCode | `.opencode/plugins/moshi-hooks.ts` in the current project |
+| OpenCode | `~/.config/opencode/plugins/moshi-hooks.ts` by default, or `.opencode/plugins/moshi-hooks.ts` with `--local` |
 | Gemini CLI | `~/.gemini/settings.json` |
 | Cursor | `~/.cursor/hooks.json` |
 | Kimi | `~/.kimi/config.toml` |
