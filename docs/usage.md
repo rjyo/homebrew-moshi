@@ -8,6 +8,23 @@ moshi-hook serve                          # 3. run the daemon (or `brew services
 
 After step 2, supported agents route their hooks through `moshi-hook`: Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Kimi, and Qwen Code. The daemon (`serve`) holds the WebSocket to Moshi and the local Unix socket that hooks talk to.
 
+## Project tmux launcher
+
+The installed package also exposes `moshi` as a convenience alias for `moshi-hook`. Passing one directory argument starts or attaches a tmux session for that project:
+
+```bash
+moshi .
+moshi ~/a/b/name
+```
+
+The session name is the directory basename (`name` above). Moshi resolves the directory, then replaces itself with:
+
+```bash
+tmux new-session -A -s name -c /absolute/path/to/name
+```
+
+Because this uses `exec`, no Moshi wrapper process stays alive after tmux starts.
+
 ## Host Easy Pair
 
 Easy Pair is the QR-based setup flow for SSH/Mosh host access and agent-hooks daemon pairing. Run it on the machine you want Moshi to connect to:
