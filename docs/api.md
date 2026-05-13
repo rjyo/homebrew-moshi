@@ -1,10 +1,11 @@
 # `moshi-hook` API Reference
 
-Wire protocols `moshi-hook` participates in. Three surfaces:
+Wire protocols `moshi-hook` participates in. Four surfaces:
 
 1. **Local socket** — hooks ↔ daemon. Newline-delimited JSON over Unix socket.
 2. **Moshi HTTP** — daemon ↔ Moshi server. JSON over HTTPS, bearer auth.
 3. **Moshi WebSocket** — daemon ↔ Moshi server. JSON frames, bearer on upgrade.
+4. **CLI JSON** — clients ↔ CLI subcommands. Stdout JSON. Today: [`cwd-list --json`](#4-cli-json-cwd-list).
 
 ## How the pieces fit
 
@@ -247,3 +248,31 @@ Both directions share one shape:
 | Daemon → server | `pong` | Reply to `ping`. |
 
 Unknown types are logged and ignored — receivers must be lenient so the server can ship new frames ahead of daemon upgrades.
+
+---
+
+## 4. CLI JSON (`cwd-list`)
+
+`moshi-hook cwd-list --json` prints a deduped, recency-ranked list of recent project working directories scraped from local agent state. The Moshi iOS app calls this during connection preflight so the picker can offer one-tap "open recent project" entries when no tmux/zellij session exists. See [usage.md](usage.md#cwd-list--recent-project-directories) for the human-readable default output and the list of agents scanned.
+
+```jsonc
+[
+  {
+    "cwd": "/Users/jyo/projects/ai/moshi/app-ios",
+    "sources": ["claude", "codex"],     // ordered by per-source mtime desc
+    "lastUsed": 1778645115              // max across sources, unix seconds
+  },
+  // …
+]
+```
+
+Always a JSON array — empty (`[]`) when nothing is found. `sources` lists every agent that touched this cwd, with the most recently active source first; clients can render a primary icon + "+N more" treatment from that order. `lastUsed` is the freshest mtime across all sightings, used for the top-level recency sort. Non-existent paths are filtered out before output, so consumers don't need to re-`stat` each entry.
+
+Flags:
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--json` | off | Emit JSON instead of the default tabular text. |
+| `--limit N` | 10 | Maximum entries returned after dedup. |
+
+Read-only and side-effect-free. Errors from individual sources are swallowed so a single unreadable agent dir can't blank the list.

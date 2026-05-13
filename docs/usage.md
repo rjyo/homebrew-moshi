@@ -81,10 +81,36 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `serve` | Run the daemon in the foreground. Single-instance via `flock` on a lockfile next to the socket. |
 | `status [--json]` | Pairing state, paths, WS connection. |
 | `usage [--sync]` | Cached usage snapshots. `--sync` pushes them to the server. |
+| `cwd-list [--json] [--limit N]` | Recent project working directories from local agent state (Claude, Codex, Cursor). Plain-text table by default; `--json` emits the shape the iOS preflight consumes. |
 | `logs [-f]` | Tail the daemon log. |
 | `version` | Version, commit SHA, build date. |
 
 Hidden subcommands (`claude-hook`, `codex-hook`, `opencode-event`, `opencode-permission`, `gemini-hook`, `cursor-hook`, `kimi-hook`, `qwen-hook`) are invoked by the agents themselves through the configs `install` writes — you won't run them by hand.
+
+### `cwd-list` — recent project directories
+
+Scans local agent state for the working directories you've used recently and prints them deduped + ranked by recency. Used by the Moshi iOS app at connection time to offer one-tap "jump into a recent project" entries when no tmux/zellij session exists on the host.
+
+Sources covered:
+
+| Source | Where it reads from | How cwd is recovered |
+|---|---|---|
+| `claude` | `~/.claude/projects/<encoded>/*.jsonl` | Authoritative `cwd` field inside the transcript (folder names are ambiguous on hyphenated paths). |
+| `codex` | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | `session_meta.payload.cwd` on line 1. |
+| `cursor` | `~/.cursor/projects/<encoded>/` | Prefix-DFS over the encoded folder name; at each `-` it tries both `/` and a literal hyphen, recursing only into directories that exist. Resolves real paths like `…/ghostty-android` correctly. |
+
+Non-existent paths are filtered out, sources for the same cwd are merged (so a project you've touched in both Claude and Codex appears once with both sources listed), and the list is capped at `--limit` (default 10). The iOS preflight calls this with `--json`; pass it manually for a quick "what does Moshi think I've been working on" check.
+
+```bash
+$ moshi-hook cwd-list --limit 5
+claude,codex   /Users/jyo/projects/ai/moshi/app-ios
+claude         /Users/jyo/projects/ai/poc-me
+codex,claude   /Users/jyo/projects/ai/moshi/app-hook
+cursor         /Users/jyo/projects/ai/mbb-app
+codex,claude   /Users/jyo/projects/ai/moshi/app-android
+```
+
+Read-only: no network, no writes. Best-effort by design — a missing agent dir is silently skipped so a single broken source can't blank the list.
 
 ## Installed agent files
 
