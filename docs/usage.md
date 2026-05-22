@@ -15,6 +15,7 @@ The installed package also exposes `moshi` as a convenience alias for `moshi-hoo
 ```bash
 moshi .
 moshi ~/a/b/name
+moshi diff .
 ```
 
 The session name is the directory basename (`name` above). Moshi resolves the directory, then replaces itself with:
@@ -24,6 +25,17 @@ tmux new-session -A -s name -c /absolute/path/to/name
 ```
 
 Because this uses `exec`, no Moshi wrapper process stays alive after tmux starts.
+
+## Git diff viewer
+
+The `moshi` alias can also open a local browser-based diff viewer for a Git project:
+
+```bash
+moshi diff .
+moshi diff ~/a/b/name --no-open
+```
+
+The viewer is embedded in `moshi-hook`, starts a localhost-only HTTP server, and reads Git state directly from the selected directory. Diff contents stay on the host. The default port is stable (`24543`); running `moshi diff` again for another workspace updates the existing diff server and reopens the same local URL. If the daemon gateway already owns that port, `moshi diff` falls back to a free ephemeral port. Pass `--port 0` to force an ephemeral free port.
 
 ## Host Easy Pair
 
@@ -79,7 +91,9 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `MOSHI_PAIRING_TOKEN` | Pairing token (alternative to `--token`). |
 | `MOSHI_API_BASE` | API base URL (alternative to `--base-url`). |
 | `MOSHI_SOCKET_PATH` | Override the Unix socket path. |
+| `MOSHI_HOOK_GATEWAY_LISTEN` | Override the host gateway listen address. |
 | `MOSHI_STATE_DIR` / `MOSHI_CONFIG_DIR` | Override state/config dirs. |
+| `MOSHI_HOOK_CONFIG_DIR` | Override the config dir for `config.toml` gateway settings. |
 | `CLAUDE_CONFIG_DIR` | Override Claude Code config dir for Claude hook install/status/uninstall. |
 | `XDG_STATE_HOME` / `XDG_CONFIG_HOME` / `XDG_RUNTIME_DIR` | Standard XDG dirs (Linux). |
 
@@ -93,12 +107,16 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `host list` | List local Moshi host SSH pairings. |
 | `host revoke <id>` | Remove a Moshi host SSH key from `authorized_keys`. |
 | `host enable-ssh` | Help enable SSH prerequisites on macOS. |
+| `diff [path] [--no-open] [--port N]` | Serve the embedded Git diff viewer for a local project directory. |
 | `install` | Write Moshi entries into supported agent config files. Use `--target claude,codex,opencode,gemini,cursor,kimi,qwen` to limit the set. Non-destructive: leaves user-owned hooks alone. OpenCode installs globally by default; use `--local` for `.opencode/plugins` in the current project. |
 | `uninstall` | Remove Moshi-owned entries from those files. For OpenCode, pass `--local` to remove a project-local install. |
-| `serve` | Run the daemon in the foreground. Single-instance via `flock` on a lockfile next to the socket. |
+| `serve [--gateway-listen 127.0.0.1:24543]` | Run the daemon and localhost diff gateway in the foreground. Single-instance via `flock` on a lockfile next to the socket. |
 | `status [--json]` | Pairing state, paths, WS connection. |
 | `usage [--sync]` | Cached usage snapshots. `--sync` pushes them to the server. |
 | `cwd-list [--json] [--limit N]` | Recent project working directories from local agent state (Claude, Codex, Cursor). Plain-text table by default; `--json` emits the shape the iOS preflight consumes. |
+| `servers [--ssh-connection \"<value>\"] [--mosh-port <p> [--mosh-host <ip>]]` | Probe local TCP listeners and print HTTP web servers for SSH preflight (filtered to `text/html` responses, tagged with owning process + PID, one-entry-per-PID). With a session lookup, decorates each row with `isCurrentContext`. |
+| `servers kill --pid <pid> --port <port> [--host <host>] [--force=false]` | Terminate a discovered local HTTP server after re-validating that the PID and port still match the server list. |
+| `context [--ssh-connection \"<value>\"] [--mosh-port <p> [--mosh-host <ip>]]` | Print terminal context (kind=tmux or shell, cwd, git) for the caller or a remote SSH/Mosh session. With no flags, auto-detects from `$TMUX_PANE` or falls back to the caller's cwd. With `--ssh-connection`/`--mosh-port`, looks up the iOS-owned session's login shell and reports whether the user is currently in tmux. Used by Moshi clients over SSH preflight. |
 | `logs [-f]` | Tail the daemon log. |
 | `version` | Version, commit SHA, build date. |
 
@@ -128,6 +146,31 @@ codex,claude   /Users/jyo/projects/ai/moshi/app-android
 ```
 
 Read-only: no network, no writes. Best-effort by design — a missing agent dir is silently skipped so a single broken source can't blank the list.
+
+### `context` — live terminal state for an SSH/Mosh session
+
+The iOS app uses this to ask "is the user currently in tmux on this session, and where is their cwd?" Detection is live: when the user attaches/detaches tmux, the next call reflects it.
+
+Identifiers (exactly one):
+
+| Flag | Where iOS gets it |
+|---|---|
+| `--ssh-connection "<client_ip> <client_port> <server_ip> <server_port>"` | Captured once via ssh-exec right after the SSH session opens (`echo $SSH_CONNECTION`). |
+| `--mosh-port <port>` | Already known from the `MOSH CONNECT <port> <key>` handshake. |
+| `--mosh-host <ip>` | Optional; required only to disambiguate when two mosh-servers happen to share a port number on different interfaces (e.g. Tailscale + LAN at once). iOS knows it — it's the IP its UDP socket connected to. Without it, ambiguous lookups error rather than guessing. |
+
+Resolution chain: identifier → login shell PID → controlling TTY → `tmux list-clients` match. If matched, returns the session's active pane via `tmux display-message`; otherwise returns `kind: "shell"` with cwd from `/proc/<pid>/cwd` (Linux) or `lsof -d cwd` (macOS). Same JSON shape both ways; the `tmux` block is omitted in shell mode.
+
+```bash
+# CLI auto-detect inside the caller's own shell
+moshi-hook context
+
+# iOS query for a remote SSH session
+moshi-hook context --ssh-connection "192.168.68.55 60688 192.168.68.54 22"
+
+# iOS query for a remote Mosh session with host disambiguator
+moshi-hook context --mosh-port 60001 --mosh-host 192.168.68.54
+```
 
 ## Installed agent files
 

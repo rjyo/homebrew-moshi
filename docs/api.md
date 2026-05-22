@@ -1,11 +1,12 @@
 # `moshi-hook` API Reference
 
-Wire protocols `moshi-hook` participates in. Four surfaces:
+Wire protocols `moshi-hook` participates in. Five surfaces:
 
 1. **Local socket** — hooks ↔ daemon. Newline-delimited JSON over Unix socket.
 2. **Moshi HTTP** — daemon ↔ Moshi server. JSON over HTTPS, bearer auth.
 3. **Moshi WebSocket** — daemon ↔ Moshi server. JSON frames, bearer on upgrade.
-4. **CLI JSON** — clients ↔ CLI subcommands. Stdout JSON. Today: [`cwd-list --json`](#4-cli-json-cwd-list).
+4. **Host gateway HTTP** — Moshi app ↔ `moshi-hook serve` over an SSH local forward. Diff viewer JSON/static HTTP on localhost, no bearer auth.
+5. **CLI JSON** — clients ↔ CLI subcommands over SSH preflight. Stdout JSON for server discovery, terminal context, and cwd-list.
 
 ## How the pieces fit
 
@@ -251,7 +252,124 @@ Unknown types are logged and ignored — receivers must be lenient so the server
 
 ---
 
-## 4. CLI JSON (`cwd-list`)
+## 4. Host Gateway HTTP
+
+`moshi-hook serve` starts a localhost-only diff gateway in the same daemon process as the Unix socket and WebSocket bridge.
+
+Listen-address precedence:
+
+1. `moshi-hook serve --gateway-listen 127.0.0.1:24543`
+2. `MOSHI_HOOK_GATEWAY_LISTEN=127.0.0.1:24543`
+3. `~/.config/moshi-hook/config.toml`
+
+```toml
+[gateway]
+listen = "127.0.0.1:24543"
+```
+
+4. Default `127.0.0.1:24543`
+
+Gateway HTTP is loopback-only and does not require `Authorization`. Clients reach it through SSH local forwarding. Host/account auth remains limited to daemon-to-Moshi server calls that deliver pushes, usage, approvals, and WebSocket frames.
+
+The HTTP gateway serves diff and bounded control actions for servers surfaced by discovery. Pull-only host inspection is intentionally not exposed here: `GET /v1/capabilities`, `GET /v1/servers`, and `GET /v1/sessions/context` return `404`. Use the SSH preflight CLI commands below instead.
+
+### `POST /v1/diff/start`
+
+Starts or reuses an embedded diff viewer session for a Git repository.
+
+```jsonc
+// request
+{ "cwd": "/Users/me/projects/foo" }
+
+// response
+{ "diffSessionId": "diff_abc123", "url": "/apps/diff/diff_abc123/" }
+```
+
+Diff sessions expire after 15 minutes idle and are served under `/apps/diff/:sessionId/`. Diff payloads are read from the host filesystem and never sent to the Moshi backend.
+
+### `POST /v1/servers/kill`
+
+Terminates a discovered local HTTP server. The daemon re-runs server discovery and only signals a process whose current PID and port match the request; arbitrary PIDs are rejected. By default callers should send `force: true`, which sends `SIGTERM` first and falls back to `SIGKILL` if the process does not exit within the grace period.
+
+```jsonc
+// request
+{ "host": "127.0.0.1", "port": 5173, "pid": 27753, "force": true }
+
+// response
+{ "killed": true, "forced": false, "pid": 27753, "port": 5173, "server": { /* discovered server */ } }
+```
+
+---
+
+## 5. CLI JSON (SSH preflight)
+
+Moshi clients use SSH exec/preflight for host inspection commands. These commands print JSON to stdout and do not require host pairing or a bearer token. There is no separate capabilities manifest; clients should run the specific command they need and handle command failure as unsupported/unavailable.
+
+### `moshi-hook servers [--ssh-connection "..."] [--mosh-port <p> [--mosh-host <ip>]]`
+
+Discovers listening loopback HTTP services and returns each origin as the host sees it.
+
+```json
+{
+  "servers": [{
+    "id": "server_1",
+    "name": "Vite",
+    "host": "127.0.0.1",
+    "port": 5173,
+    "origin": "http://127.0.0.1:5173",
+    "process": "node",
+    "pid": 27753,
+    "isCurrentContext": false
+  }]
+}
+```
+
+Filtering: only responses whose `Content-Type` is `text/html` (or `application/xhtml+xml`) are surfaced. AirTunes, proxy admin UIs, and JSON-only APIs are dropped — they're not openable in a WebView.
+
+`isCurrentContext` is always `false` for the context-less global server list. When a session lookup is supplied, the CLI mirrors the `/events` WebSocket decoration: `true` means Moshi could attribute the listener to the current shell context or the current tmux session.
+
+Transport: **same-port forwarding only.** Clients are expected to open an SSH local forward `phone:<port> → host:<port>` for each origin and load `http://localhost:<port>` in the WebView, matching the host URL exactly. The gateway does not implement a path-prefix reverse proxy (`/proxy/http/...`) and will not — path-prefix proxying breaks HMR (absolute WebSocket paths), OAuth (`Origin` / redirect URI), and `SameSite` cookies. If the phone hits a local port collision, surface an error to the user; do not rewrite URLs.
+
+### `moshi-hook servers kill --pid <pid> --port <port> [--host <host>] [--force=false]`
+
+Terminates a discovered server after re-validating that the PID and port still belong to a surfaced HTTP server. The JSON response matches `POST /v1/servers/kill`.
+
+### `moshi-hook context [--ssh-connection "..."] [--mosh-port <p> [--mosh-host <ip>]]`
+
+Returns the current terminal state for an iOS-owned SSH or Mosh session: tmux pane (if the user has tmux attached on the session's TTY) or bare shell. Detection is live — attaching or detaching tmux changes the next response immediately.
+
+Remote-session flags (set `--ssh-connection` or `--mosh-port`; `--mosh-host` only applies with `--mosh-port`):
+
+| param | value |
+|---|---|
+| `ssh-connection` | Verbatim `$SSH_CONNECTION` from inside the session (`"<client_ip> <client_port> <server_ip> <server_port>"`). iOS captures this once via ssh-exec right after the session opens. |
+| `mosh-port` | Server-side UDP port that `mosh-server` is listening on for the session. iOS already knows it from the `MOSH CONNECT <port> <key>` handshake. |
+| `mosh-host` | *Optional but recommended.* Server-side bind address. Required to disambiguate when two mosh-servers share the same port on different interfaces (e.g. one over Tailscale, one over LAN). iOS knows this value — it's the IP its UDP socket connected to. When omitted and multiple bindings match the port, the request fails with an explicit error rather than returning a guessed session. |
+
+Tmux response:
+
+```json
+{
+  "kind": "tmux",
+  "tmux": { "session": "work", "window": "2", "pane": "%7" },
+  "cwd": "/Users/me/projects/foo",
+  "git": { "repo": "/Users/me/projects/foo", "branch": "main", "dirty": true }
+}
+```
+
+Shell response (no tmux client attached to the session's TTY):
+
+```json
+{
+  "kind": "shell",
+  "cwd": "/Users/me/projects/foo",
+  "git": { "repo": "/Users/me/projects/foo", "branch": "main", "dirty": true }
+}
+```
+
+Resolution: the daemon finds the session's login shell (env-walk for SSH, UDP-port-owner for Mosh), reads its controlling TTY, and asks `tmux list-clients` whether anything is attached. If yes, returns that session's active pane via `tmux display-message`. If no, reads the shell's cwd directly (`/proc/<pid>/cwd` on Linux, `lsof -d cwd` on macOS) and resolves Git state.
+
+### `moshi-hook cwd-list --json`
 
 `moshi-hook cwd-list --json` prints a deduped, recency-ranked list of recent project working directories scraped from local agent state. The Moshi iOS app calls this during connection preflight so the picker can offer one-tap "open recent project" entries when no tmux/zellij session exists. See [usage.md](usage.md#cwd-list--recent-project-directories) for the human-readable default output and the list of agents scanned.
 
