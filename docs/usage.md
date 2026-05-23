@@ -149,7 +149,7 @@ Read-only: no network, no writes. Best-effort by design — a missing agent dir 
 
 ### `context` — live terminal state for an SSH/Mosh session
 
-The iOS app uses this to ask "is the user currently in tmux on this session, and where is their cwd?" Detection is live: when the user attaches/detaches tmux, the next call reflects it.
+The iOS app uses this to ask "is the user currently in tmux/zellij on this session, and where is their cwd?" Tmux detection is live: when the user attaches/detaches tmux, the next call reflects it. Zellij detection uses the shell environment (`ZELLIJ`, `ZELLIJ_SESSION_NAME`, `ZELLIJ_PANE_ID`) when those variables are visible to the caller.
 
 Identifiers (exactly one):
 
@@ -159,7 +159,7 @@ Identifiers (exactly one):
 | `--mosh-port <port>` | Already known from the `MOSH CONNECT <port> <key>` handshake. |
 | `--mosh-host <ip>` | Optional; required only to disambiguate when two mosh-servers happen to share a port number on different interfaces (e.g. Tailscale + LAN at once). iOS knows it — it's the IP its UDP socket connected to. Without it, ambiguous lookups error rather than guessing. |
 
-Resolution chain: identifier → login shell PID → controlling TTY → `tmux list-clients` match. If matched, returns the session's active pane via `tmux display-message`; otherwise returns `kind: "shell"` with cwd from `/proc/<pid>/cwd` (Linux) or `lsof -d cwd` (macOS). Same JSON shape both ways; the `tmux` block is omitted in shell mode.
+Resolution chain: identifier → login shell PID → controlling TTY → `tmux list-clients` match → zellij env probe. If tmux matches, returns the session's active pane via `tmux display-message`; if zellij env is present, returns `kind: "zellij"` with the zellij session/pane values; otherwise returns `kind: "shell"` with cwd from `/proc/<pid>/cwd` (Linux) or `lsof -d cwd` (macOS). The `tmux` or `zellij` block is omitted when not applicable.
 
 ```bash
 # CLI auto-detect inside the caller's own shell

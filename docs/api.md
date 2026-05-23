@@ -80,7 +80,10 @@ Every frame uses the same shape. Fields are optional, interpreted per `type`. Un
   "category": "shell",
   "cwd": "/Users/jyo/projects/foo",
   "projectName": "foo",
-  "tmuxSession": "main",
+  "terminalKind": "zellij",              // "tmux" | "zellij"
+  "zellijSession": "main",
+  "zellijPane": "terminal_1",
+  "tmuxSession": "main",                 // present when terminalKind is "tmux"
   "tmuxWindow": "0",
   "toolName": "Bash",
   "modelName": "claude-opus-4-7",
@@ -336,7 +339,7 @@ Terminates a discovered server after re-validating that the PID and port still b
 
 ### `moshi-hook context [--ssh-connection "..."] [--mosh-port <p> [--mosh-host <ip>]]`
 
-Returns the current terminal state for an iOS-owned SSH or Mosh session: tmux pane (if the user has tmux attached on the session's TTY) or bare shell. Detection is live — attaching or detaching tmux changes the next response immediately.
+Returns the current terminal state for an iOS-owned SSH or Mosh session: tmux pane (if the user has tmux attached on the session's TTY), zellij pane when detected from the shell environment, or bare shell. Tmux detection is live — attaching or detaching tmux changes the next response immediately.
 
 Remote-session flags (set `--ssh-connection` or `--mosh-port`; `--mosh-host` only applies with `--mosh-port`):
 
@@ -357,7 +360,18 @@ Tmux response:
 }
 ```
 
-Shell response (no tmux client attached to the session's TTY):
+Zellij response:
+
+```json
+{
+  "kind": "zellij",
+  "zellij": { "session": "work", "pane": "terminal_7" },
+  "cwd": "/Users/me/projects/foo",
+  "git": { "repo": "/Users/me/projects/foo", "branch": "main", "dirty": true }
+}
+```
+
+Shell response (no multiplexer detected):
 
 ```json
 {
