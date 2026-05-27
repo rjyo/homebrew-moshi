@@ -347,7 +347,7 @@ Remote-session flags (set `--ssh-connection` or `--mosh-port`; `--mosh-host` onl
 |---|---|
 | `ssh-connection` | Verbatim `$SSH_CONNECTION` from inside the session (`"<client_ip> <client_port> <server_ip> <server_port>"`). iOS captures this once via ssh-exec right after the session opens. |
 | `mosh-port` | Server-side UDP port that `mosh-server` is listening on for the session. iOS already knows it from the `MOSH CONNECT <port> <key>` handshake. |
-| `mosh-host` | *Optional but recommended.* Server-side bind address. Required to disambiguate when two mosh-servers share the same port on different interfaces (e.g. one over Tailscale, one over LAN). iOS knows this value — it's the IP its UDP socket connected to. When omitted and multiple bindings match the port, the request fails with an explicit error rather than returning a guessed session. |
+| `mosh-host` | Optional disambiguation hint for the server-side bind address. It is only needed when two mosh-servers share the same port on different interfaces (e.g. one over Tailscale, one over LAN). If the hint does not match but the port has only one local binding, the daemon uses that binding. Without a matching hint, ambiguous lookups fail explicitly rather than returning a guessed session. |
 
 Tmux response:
 

@@ -159,7 +159,7 @@ Identifiers (exactly one):
 |---|---|
 | `--ssh-connection "<client_ip> <client_port> <server_ip> <server_port>"` | Captured once via ssh-exec right after the SSH session opens (`echo $SSH_CONNECTION`). |
 | `--mosh-port <port>` | Already known from the `MOSH CONNECT <port> <key>` handshake. |
-| `--mosh-host <ip>` | Optional; required only to disambiguate when two mosh-servers happen to share a port number on different interfaces (e.g. Tailscale + LAN at once). iOS knows it — it's the IP its UDP socket connected to. Without it, ambiguous lookups error rather than guessing. |
+| `--mosh-host <ip>` | Optional disambiguation hint for the rare case where two mosh-servers share a port number on different interfaces (e.g. Tailscale + LAN at once). If the hint does not match but the port has only one local binding, the daemon uses that binding. Without a matching hint, ambiguous lookups error rather than guessing. |
 
 Resolution chain: identifier → login shell PID → controlling TTY → `tmux list-clients` match → zellij env probe. If tmux matches, returns the session's active pane via `tmux display-message`; if zellij env is present, returns `kind: "zellij"` with the zellij session/pane values; otherwise returns `kind: "shell"` with cwd from `/proc/<pid>/cwd` (Linux) or `lsof -d cwd` (macOS). The `tmux` or `zellij` block is omitted when not applicable.
 
