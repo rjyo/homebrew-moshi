@@ -6,7 +6,7 @@ moshi-hook install                        # 2. write hook configs for installed 
 moshi-hook serve                          # 3. run the daemon (or `brew services start moshi-hook`)
 ```
 
-After step 2, supported agents route their hooks through `moshi-hook`: Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Kimi, and Qwen Code. The daemon (`serve`) holds the WebSocket to Moshi and the local Unix socket that hooks talk to.
+After step 2, supported agents route their hooks through `moshi-hook`: Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Kimi, Qwen Code, and Grok Build. The daemon (`serve`) holds the WebSocket to Moshi and the local Unix socket that hooks talk to.
 
 ## Project tmux launcher
 
@@ -109,7 +109,7 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `host revoke <id>` | Remove a Moshi host SSH key from `authorized_keys`. |
 | `host enable-ssh` | Help enable SSH prerequisites on macOS. |
 | `diff [path] [--no-open] [--port N]` | Serve the embedded Git diff viewer for a local project directory. |
-| `install` | Write Moshi entries into supported agent config files. Use `--target claude,codex,opencode,gemini,cursor,kimi,qwen` to limit the set. Non-destructive: leaves user-owned hooks alone. OpenCode installs globally by default; use `--local` for `.opencode/plugins` in the current project. |
+| `install` | Write Moshi entries into supported agent config files. By default, only installs targets whose config root already exists and reports missing agents as skipped. Use `--target claude,codex,opencode,gemini,cursor,kimi,qwen,grok` to force or limit the set. Non-destructive: leaves user-owned hooks alone. OpenCode installs globally by default; use `--local` for `.opencode/plugins` in the current project. |
 | `uninstall` | Remove Moshi-owned entries from those files. For OpenCode, pass `--local` to remove a project-local install. |
 | `serve [--gateway-listen 127.0.0.1:24543]` | Run the daemon and localhost diff gateway in the foreground. Single-instance via `flock` on a lockfile next to the socket. |
 | `status [--json]` | Pairing state, paths, WS connection. |
@@ -122,7 +122,7 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `logs [-f]` | Tail the daemon log. |
 | `version` | Version, commit SHA, build date. |
 
-Hidden subcommands (`claude-hook`, `codex-hook`, `opencode-event`, `opencode-permission`, `gemini-hook`, `cursor-hook`, `kimi-hook`, `qwen-hook`) are invoked by the agents themselves through the configs `install` writes — you won't run them by hand.
+Hidden subcommands (`claude-hook`, `codex-hook`, `opencode-event`, `opencode-permission`, `gemini-hook`, `cursor-hook`, `kimi-hook`, `qwen-hook`, `grok-hook`) are invoked by the agents themselves through the configs `install` writes — you won't run them by hand.
 
 ### `cwd-list` — recent project directories
 
@@ -185,6 +185,9 @@ moshi-hook context --mosh-port 60001 --mosh-host 192.168.68.54
 | Cursor | `~/.cursor/hooks.json` |
 | Kimi | `~/.kimi/config.toml` |
 | Qwen Code | `~/.qwen/settings.json` |
+| Grok Build | `~/.grok/hooks/moshi-hooks.json` |
+
+Default `install` skips a managed file when the agent's config root is missing, for example `~/.cursor` or `~/.gemini`. Passing `--target` preserves the old create-if-missing behavior for that target.
 
 Kimi's managed install uses the verified Kimi hook set and does not install `PermissionRequest` by default. The `kimi-hook` dispatcher can still handle `PermissionRequest` if a user adds that event manually.
 

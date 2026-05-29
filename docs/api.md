@@ -85,6 +85,7 @@ Every frame uses the same shape. Fields are optional, interpreted per `type`. Un
   "zellijPane": "terminal_1",
   "tmuxSession": "main",                 // present when terminalKind is "tmux"
   "tmuxWindow": "0",
+  "tmuxPane": "%7",
   "toolName": "Bash",
   "modelName": "claude-opus-4-7",
   "contextPercent": 42,                  // 0..100, 0 = unknown

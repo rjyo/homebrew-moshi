@@ -1,0 +1,134 @@
+# Agent Hooks
+
+High-level reference for which agent events Moshi surfaces in the inbox.
+
+This document is intentionally not an implementation guide. Keep it focused on
+product behavior and public integration concepts. Do not add local filesystem
+paths, socket names, endpoint shapes, transcript formats, token keys, terminal
+control details, or approval automation mechanics.
+
+---
+
+## What We Capture
+
+Moshi normalizes agent-specific events into a small category model. Events
+without one of these categories are acknowledged locally and are not published.
+
+| Category | Source behavior | Inbox effect |
+| --- | --- | --- |
+| `approval_required` | Agent asks the user for a decision or answer | Upsert a pending approval row |
+| `task_complete` | Agent turn finishes or is interrupted | Upsert a completed row |
+| `session_started` | A user prompt starts or resumes work | Upsert a running row |
+| `session_ended` | Session is cleared, closed, or reset | Clear active running state |
+| `tool_running` | Agent starts tool activity | Upsert a running row |
+| `tool_finished` | Agent finishes tool activity | Upsert a running row |
+
+Inbox behavior:
+
+- One active row per `sessionId`; newer events replace older row content.
+- Pending approvals render as approval cards.
+- Non-pending events render as task rows with different title/subtitle text.
+- Completed rows age out of the active list after a short freshness window.
+
+---
+
+## Per-Agent Coverage
+
+### Claude Code
+
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| Session starts | Stored silently until the first prompt |
+| User submits a prompt | Publishes or updates `session_started` |
+| Tool activity | Publishes throttled tool progress |
+| Permission request | Publishes `approval_required` |
+| Agent stops | Publishes `task_complete` |
+| Session ends or clears | Publishes `session_ended` |
+| User interrupt | Publishes `task_complete`; if the user immediately gives new instructions, publishes `session_started` again |
+| Agent asks the user a question | Publishes `approval_required`; when answered outside Moshi, follows with a resumed running state |
+
+Claude-specific debug, notification, subagent, batch, and compaction events are
+not surfaced unless they map cleanly to the category model above.
+
+### Codex CLI
+
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| Session starts | Stored silently until the first prompt |
+| User submits a prompt | Publishes or updates `session_started` |
+| Tool activity | Publishes throttled tool progress |
+| Permission request | Publishes `approval_required` |
+| Agent stops | Publishes `task_complete` |
+| Session clears | Publishes `session_ended` before the next visible turn |
+| User interrupt | Publishes `task_complete` when detected |
+
+Codex approvals remain compatible with Codex's own terminal flow. Moshi may
+offer a remote approval experience when the local environment can be verified,
+but this document deliberately omits those mechanics.
+
+### OpenCode
+
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| Session created or marked busy | Publishes `session_started` |
+| Session becomes idle | Publishes `task_complete` |
+| Permission request | Publishes `approval_required` |
+| Tool activity | Publishes tool progress |
+
+Streaming messages, file events, LSP events, TUI events, and miscellaneous
+server or command notifications are not surfaced.
+
+### Grok Build
+
+Grok Build follows the same broad behavior as Claude-compatible hooks:
+
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| Session starts | Stored silently until the first prompt |
+| User submits a prompt | Publishes or updates `session_started` |
+| Permission request | Publishes `approval_required` |
+| Agent stops | Publishes `task_complete` |
+| Session ends | Publishes `session_ended` |
+| Tool activity | Supported only when explicitly enabled |
+
+### Cursor CLI
+
+Cursor CLI support is planned. The target behavior is the same normalized
+category model: session start/end, tool progress, approval, and turn complete.
+Reasoning traces, editor-internal events, file watchers, and streaming partials
+should remain out of scope.
+
+---
+
+## Events We Do Not Surface
+
+Drop events that do not create a meaningful user-facing inbox state.
+
+| Event family | Reason |
+| --- | --- |
+| Empty session start | Avoid blank inbox rows |
+| Streaming message partials | Too chatty for push and inbox |
+| File, LSP, editor, or TUI events | Local implementation detail |
+| Subagent lifecycle events | Parent turn carries the user-visible signal |
+| Batch/debug/diagnostic events | No direct user action |
+| Config, environment, or worktree events | Local state, not agent activity |
+| Reasoning trace events | Not appropriate for inbox |
+| Compaction events | Not surfaced today |
+
+---
+
+## Filter Rules
+
+Use this rule set when changing hooks or adding a new agent:
+
+1. Capture lifecycle boundaries: prompt starts, turn completes, session ends,
+   and approval requests.
+2. Capture tool activity only through throttled progress updates.
+3. Treat user questions as approvals or pending-answer rows only when they
+   require user action.
+4. Preserve one-row-per-session behavior.
+5. Prefer dropping new event types over adding new categories.
+6. Keep implementation details out of this document.
+
+The inbox shape is deliberate. New agents should map into the existing
+categories instead of expanding the event model by default.
