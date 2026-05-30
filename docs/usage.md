@@ -96,6 +96,11 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `MOSHI_STATE_DIR` / `MOSHI_CONFIG_DIR` | Override state/config dirs. |
 | `MOSHI_HOOK_CONFIG_DIR` | Override the config dir for `config.toml` gateway settings. |
 | `CLAUDE_CONFIG_DIR` | Override Claude Code config dir for Claude hook install/status/uninstall. |
+| `CODEX_HOME` | Override Codex config dir for hook install/status/uninstall. |
+| `OPENCODE_CONFIG_DIR` | Override OpenCode global config/plugin dir for hook install/status/uninstall. |
+| `CURSOR_CONFIG_DIR` | Override Cursor config dir for hook install/status/uninstall. |
+| `KIMI_SHARE_DIR` | Override Kimi config/share dir for hook install/status/uninstall. |
+| `GROK_HOME` | Override Grok Build config dir for hook install/status/uninstall. |
 | `XDG_STATE_HOME` / `XDG_CONFIG_HOME` / `XDG_RUNTIME_DIR` | Standard XDG dirs (Linux). |
 
 ## Subcommands
@@ -178,14 +183,14 @@ moshi-hook context --mosh-port 60001 --mosh-host 192.168.68.54
 
 | Agent | Managed file |
 |---|---|
-| Claude Code | `~/.claude/settings.json` |
-| Codex | `~/.codex/hooks.json` plus `~/.codex/config.toml` feature flag |
-| OpenCode | `~/.config/opencode/plugins/moshi-hooks.ts` by default, or `.opencode/plugins/moshi-hooks.ts` with `--local` |
+| Claude Code | `$CLAUDE_CONFIG_DIR/settings.json` or `~/.claude/settings.json` |
+| Codex | `$CODEX_HOME/hooks.json` plus `$CODEX_HOME/config.toml` feature flag, or `~/.codex/...` |
+| OpenCode | `$OPENCODE_CONFIG_DIR/plugins/moshi-hooks.ts`, `$XDG_CONFIG_HOME/opencode/plugins/moshi-hooks.ts`, or `~/.config/opencode/plugins/moshi-hooks.ts`; `.opencode/plugins/moshi-hooks.ts` with `--local` |
 | Gemini CLI | `~/.gemini/settings.json` |
-| Cursor | `~/.cursor/hooks.json` |
-| Kimi | `~/.kimi/config.toml` |
+| Cursor | `$CURSOR_CONFIG_DIR/hooks.json` or `~/.cursor/hooks.json` |
+| Kimi | `$KIMI_SHARE_DIR/config.toml` or `~/.kimi/config.toml` |
 | Qwen Code | `~/.qwen/settings.json` |
-| Grok Build | `~/.grok/hooks/moshi-hooks.json` |
+| Grok Build | `$GROK_HOME/hooks/moshi-hooks.json` or `~/.grok/hooks/moshi-hooks.json` |
 
 Default `install` skips a managed file when the agent's config root is missing, for example `~/.cursor` or `~/.gemini`. Passing `--target` preserves the old create-if-missing behavior for that target.
 
