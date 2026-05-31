@@ -355,7 +355,14 @@ Tmux response:
 ```json
 {
   "kind": "tmux",
-  "tmux": { "session": "work", "window": "2", "pane": "%7" },
+  "tmux": {
+    "session": "work",
+    "window": "2",
+    "pane": "%7",
+    "copyMode": true,
+    "scrollPosition": 42,
+    "historySize": 900
+  },
   "cwd": "/Users/me/projects/foo",
   "git": { "repo": "/Users/me/projects/foo", "branch": "main", "dirty": true }
 }
