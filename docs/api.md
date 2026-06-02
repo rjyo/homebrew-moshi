@@ -80,9 +80,11 @@ Every frame uses the same shape. Fields are optional, interpreted per `type`. Un
   "category": "shell",
   "cwd": "/Users/jyo/projects/foo",
   "projectName": "foo",
-  "terminalKind": "zellij",              // "tmux" | "zellij"
+  "terminalKind": "zellij",              // "tmux" | "zellij" | "herdr"
   "zellijSession": "main",
   "zellijPane": "terminal_1",
+  "herdrSession": "main",
+  "herdrPane": "w6533c030139461-1",
   "tmuxSession": "main",                 // present when terminalKind is "tmux"
   "tmuxWindow": "0",
   "tmuxPane": "%7",
