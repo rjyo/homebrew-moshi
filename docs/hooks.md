@@ -19,7 +19,7 @@ without one of these categories are acknowledged locally and are not published.
 | `approval_required` | Agent asks the user for a decision or answer | Upsert a pending approval row |
 | `task_complete` | Agent turn finishes or is interrupted | Upsert a completed row |
 | `session_started` | A user prompt starts or resumes work | Upsert a running row |
-| `session_ended` | Session is cleared, closed, or reset | Clear active running state |
+| `session_ended` | Session is cleared or reset | Clear active running state |
 | `tool_running` | Agent starts tool activity | Upsert a running row |
 | `tool_finished` | Agent finishes tool activity | Upsert a running row |
 
@@ -43,7 +43,7 @@ Inbox behavior:
 | Tool activity | Publishes throttled tool progress |
 | Permission request | Publishes `approval_required` |
 | Agent stops | Publishes `task_complete` |
-| Session ends or clears | Publishes `session_ended` |
+| Session ends or clears | Ignored; the turn result or next prompt carries the visible state |
 | User interrupt | Publishes `task_complete`; if the user immediately gives new instructions, publishes `session_started` again |
 | Agent asks the user a question | Publishes `approval_required`; when answered outside Moshi, follows with a resumed running state |
 
@@ -88,7 +88,7 @@ Grok Build follows the same broad behavior as Claude-compatible hooks:
 | User submits a prompt | Publishes or updates `session_started` |
 | Permission request | Publishes `approval_required` |
 | Agent stops | Publishes `task_complete` |
-| Session ends | Publishes `session_ended` |
+| Session ends | Ignored; the turn result or next prompt carries the visible state |
 | Tool activity | Supported only when explicitly enabled |
 
 ### Cursor CLI
@@ -112,6 +112,7 @@ Drop events that do not create a meaningful user-facing inbox state.
 | Subagent lifecycle events | Parent turn carries the user-visible signal |
 | Batch/debug/diagnostic events | No direct user action |
 | Config, environment, or worktree events | Local state, not agent activity |
+| Claude-compatible session end events | Low-signal lifecycle marker after useful work is already captured |
 | Reasoning trace events | Not appropriate for inbox |
 | Compaction events | Not surfaced today |
 
