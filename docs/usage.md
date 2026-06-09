@@ -6,7 +6,7 @@ moshi-hook install                        # 2. write hook configs for installed 
 moshi-hook serve                          # 3. run the daemon (or `brew services start moshi-hook`)
 ```
 
-After step 2, supported agents route their hooks through `moshi-hook`: Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Kimi, Qwen Code, and Grok Build. The daemon (`serve`) holds the WebSocket to Moshi and the local Unix socket that hooks talk to.
+After step 2, supported agents route their hooks through `moshi-hook`: Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Kimi, Qwen Code, Grok Build, OMP (Oh My Pi), and Pi. The daemon (`serve`) holds the WebSocket to Moshi and the local Unix socket that hooks talk to.
 
 ## Project tmux launcher
 
@@ -127,7 +127,7 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `logs [-f]` | Tail the daemon log. |
 | `version` | Version, commit SHA, build date. |
 
-Hidden subcommands (`claude-hook`, `codex-hook`, `opencode-event`, `opencode-permission`, `gemini-hook`, `cursor-hook`, `kimi-hook`, `qwen-hook`, `grok-hook`) are invoked by the agents themselves through the configs `install` writes — you won't run them by hand.
+Hidden subcommands (`claude-hook`, `codex-hook`, `opencode-event`, `opencode-permission`, `gemini-hook`, `cursor-hook`, `kimi-hook`, `qwen-hook`, `grok-hook`, `omp-hook`, `pi-hook`) are invoked by the agents themselves through the configs `install` writes — you won't run them by hand.
 
 ### `cwd-list` — recent project directories
 
@@ -191,6 +191,8 @@ moshi-hook context --mosh-port 60001 --mosh-host 192.168.68.54
 | Kimi | `$KIMI_SHARE_DIR/config.toml` or `~/.kimi/config.toml` |
 | Qwen Code | `~/.qwen/settings.json` |
 | Grok Build | `$GROK_HOME/hooks/moshi-hooks.json` or `~/.grok/hooks/moshi-hooks.json` |
+| OMP (Oh My Pi) | `$OMP_CODING_AGENT_DIR/hooks/post/moshi-hooks.ts`, `$OMP_PROCESSING_AGENT_DIR/hooks/post/moshi-hooks.ts`, `$PI_CODING_AGENT_DIR/hooks/post/moshi-hooks.ts`, `$PI_CONFIG_DIR/agent/hooks/post/moshi-hooks.ts`, or `~/.omp/agent/hooks/post/moshi-hooks.ts` |
+| Pi | `$PI_CODING_AGENT_DIR/extensions/moshi-hooks.ts`, `$PI_CONFIG_DIR/agent/extensions/moshi-hooks.ts`, or `~/.pi/agent/extensions/moshi-hooks.ts` |
 
 Default `install` skips a managed file when the agent's config root is missing, for example `~/.cursor` or `~/.gemini`. Passing `--target` preserves the old create-if-missing behavior for that target.
 

@@ -91,6 +91,30 @@ Grok Build follows the same broad behavior as Claude-compatible hooks:
 | Session ends | Ignored; the turn result or next prompt carries the visible state |
 | Tool activity | Supported only when explicitly enabled |
 
+### OMP (Oh My Pi)
+
+OMP uses its TypeScript hook API. Moshi installs a global hook module and keeps
+the default coverage to low-volume lifecycle events:
+
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| Session loads | Stored silently until the first prompt |
+| User submits a prompt | Publishes or updates `session_started` |
+| Agent loop ends | Publishes `task_complete` |
+| Tool activity | Not installed by default; OMP tool hooks are synchronous and should stay opt-in |
+
+### Pi
+
+Pi uses its TypeScript extension API. Moshi installs a global extension module
+and keeps the default coverage to the same low-volume lifecycle events as OMP:
+
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| Session loads | Stored silently until the first prompt |
+| User submits a prompt | Publishes or updates `session_started` |
+| Agent loop ends | Publishes `task_complete` |
+| Tool activity | Not installed by default; Pi tool hooks are synchronous and should stay opt-in |
+
 ### Cursor CLI
 
 Cursor CLI support is planned. The target behavior is the same normalized
