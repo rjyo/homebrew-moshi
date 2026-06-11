@@ -88,7 +88,7 @@ Grok Build follows the same broad behavior as Claude-compatible hooks:
 | User submits a prompt | Publishes or updates `session_started` |
 | Permission request | Publishes `approval_required` |
 | Agent stops | Publishes `task_complete` |
-| Session ends | Ignored; the turn result or next prompt carries the visible state |
+| Session ends | Publishes `session_ended` to clear active running state |
 | Tool activity | Supported only when explicitly enabled |
 
 ### OMP (Oh My Pi)
@@ -136,7 +136,6 @@ Drop events that do not create a meaningful user-facing inbox state.
 | Subagent lifecycle events | Parent turn carries the user-visible signal |
 | Batch/debug/diagnostic events | No direct user action |
 | Config, environment, or worktree events | Local state, not agent activity |
-| Claude-compatible session end events | Low-signal lifecycle marker after useful work is already captured |
 | Reasoning trace events | Not appropriate for inbox |
 | Compaction events | Not surfaced today |
 
