@@ -121,9 +121,9 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `update [--version vX.Y.Z]` | Update a Linux/manual install from `cdn.getmoshi.app`. Verifies the release checksum before replacing the current binary. Homebrew installs are left untouched; use `brew upgrade moshi-hook`. |
 | `usage [--sync]` | Cached usage snapshots. `--sync` pushes them to the server. |
 | `cwd-list [--json] [--limit N]` | Recent project working directories from local agent state (Claude, Codex, Cursor). Plain-text table by default; `--json` emits the shape the iOS preflight consumes. |
-| `servers [--ssh-connection \"<value>\"] [--mosh-port <p> [--mosh-host <ip>]]` | Probe local TCP listeners and print HTTP web servers for SSH preflight (filtered to `text/html` responses, tagged with owning process + PID, one-entry-per-PID). With a session lookup, decorates each row with `isCurrentContext`. |
+| `servers [--ssh-connection \"<value>\"] [--mosh-port <p> [--mosh-host <ip>]] [--et-client-id <id>\|--et]` | Probe local TCP listeners and print HTTP web servers for SSH preflight (filtered to `text/html` responses, tagged with owning process + PID, one-entry-per-PID). With a session lookup, decorates each row with `isCurrentContext`. |
 | `servers kill --pid <pid> --port <port> [--host <host>] [--force=false]` | Terminate a discovered local HTTP server after re-validating that the PID and port still match the server list. |
-| `context [--ssh-connection \"<value>\"] [--mosh-port <p> [--mosh-host <ip>]]` | Print terminal context (kind=tmux or shell, cwd, git) for the caller or a remote SSH/Mosh session. With no flags, auto-detects from `$TMUX_PANE` or falls back to the caller's cwd. With `--ssh-connection`/`--mosh-port`, looks up the iOS-owned session's login shell and reports whether the user is currently in tmux. Used by Moshi clients over SSH preflight. |
+| `context [--ssh-connection \"<value>\"] [--mosh-port <p> [--mosh-host <ip>]] [--et-client-id <id>\|--et]` | Print terminal context (kind=tmux or shell, cwd, git) for the caller or a remote SSH/Mosh/ET session. With no flags, auto-detects from `$TMUX_PANE` or falls back to the caller's cwd. With a remote-session identifier, looks up the iOS-owned session's login shell and reports whether the user is currently in tmux. Used by Moshi clients over SSH preflight. |
 | `logs [-f]` | Tail the daemon log. |
 | `version` | Version, commit SHA, build date. |
 
@@ -154,7 +154,7 @@ codex,claude   /Users/jyo/projects/ai/moshi/app-android
 
 Read-only: no network, no writes. Best-effort by design — a missing agent dir is silently skipped so a single broken source can't blank the list.
 
-### `context` — live terminal state for an SSH/Mosh session
+### `context` — live terminal state for an SSH/Mosh/ET session
 
 The iOS app uses this to ask "is the user currently in tmux/zellij on this session, and where is their cwd?" Tmux detection is live: when the user attaches/detaches tmux, the next call reflects it. Zellij detection uses the shell environment (`ZELLIJ`, `ZELLIJ_SESSION_NAME`, `ZELLIJ_PANE_ID`) when those variables are visible to the caller.
 
@@ -165,8 +165,10 @@ Identifiers (exactly one):
 | `--ssh-connection "<client_ip> <client_port> <server_ip> <server_port>"` | Captured once via ssh-exec right after the SSH session opens (`echo $SSH_CONNECTION`). |
 | `--mosh-port <port>` | Already known from the `MOSH CONNECT <port> <key>` handshake. |
 | `--mosh-host <ip>` | Optional disambiguation hint for the rare case where two mosh-servers share a port number on different interfaces (e.g. Tailscale + LAN at once). If the hint does not match but the port has only one local binding, the daemon uses that binding. Without a matching hint, ambiguous lookups error rather than guessing. |
+| `--et-client-id <id>` | Eternal Terminal's 16-character client id from the ET handshake. |
+| `--et` | Manual ET fallback. Only works when exactly one `etterminal` process is visible; otherwise pass `--et-client-id`. |
 
-Resolution chain: identifier → login shell PID → controlling TTY → `tmux list-clients` match → zellij env probe. If tmux matches, returns the session's active pane via `tmux display-message`; if zellij env is present, returns `kind: "zellij"` with the zellij session/pane values; otherwise returns `kind: "shell"` with cwd from `/proc/<pid>/cwd` (Linux) or `lsof -d cwd` (macOS). The `tmux` or `zellij` block is omitted when not applicable.
+Resolution chain: identifier → login shell PID → controlling TTY → `tmux list-clients` match → zellij env probe. SSH uses `$SSH_CONNECTION`, Mosh uses the `mosh-server` UDP listener, and ET uses the per-session `etterminal` child shell. If tmux matches, returns the session's active pane via `tmux display-message`; if zellij env is present, returns `kind: "zellij"` with the zellij session/pane values; otherwise returns `kind: "shell"` with cwd from `/proc/<pid>/cwd` (Linux) or `lsof -d cwd` (macOS). The `tmux` or `zellij` block is omitted when not applicable.
 
 ```bash
 # CLI auto-detect inside the caller's own shell
@@ -177,6 +179,9 @@ moshi-hook context --ssh-connection "192.168.68.55 60688 192.168.68.54 22"
 
 # iOS query for a remote Mosh session with host disambiguator
 moshi-hook context --mosh-port 60001 --mosh-host 192.168.68.54
+
+# iOS query for a remote Eternal Terminal session
+moshi-hook context --et-client-id abcdefghijklmnop
 ```
 
 ## Installed agent files

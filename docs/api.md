@@ -323,7 +323,7 @@ Terminates a discovered local HTTP server. The daemon re-runs server discovery a
 
 Moshi clients use SSH exec/preflight for host inspection commands. These commands print JSON to stdout and do not require host pairing or a bearer token. There is no separate capabilities manifest; clients should run the specific command they need and handle command failure as unsupported/unavailable.
 
-### `moshi-hook servers [--ssh-connection "..."] [--mosh-port <p> [--mosh-host <ip>]]`
+### `moshi-hook servers [--ssh-connection "..."] [--mosh-port <p> [--mosh-host <ip>]] [--et-client-id <id>|--et]`
 
 Discovers listening loopback HTTP services and returns each origin as the host sees it.
 
@@ -352,17 +352,19 @@ Transport: **same-port forwarding only.** Clients are expected to open an SSH lo
 
 Terminates a discovered server after re-validating that the PID and port still belong to a surfaced HTTP server. The JSON response matches `POST /v1/servers/kill`.
 
-### `moshi-hook context [--ssh-connection "..."] [--mosh-port <p> [--mosh-host <ip>]]`
+### `moshi-hook context [--ssh-connection "..."] [--mosh-port <p> [--mosh-host <ip>]] [--et-client-id <id>|--et]`
 
-Returns the current terminal state for an iOS-owned SSH or Mosh session: tmux pane (if the user has tmux attached on the session's TTY), zellij pane when detected from the shell environment, or bare shell. Tmux detection is live — attaching or detaching tmux changes the next response immediately.
+Returns the current terminal state for an iOS-owned SSH, Mosh, or Eternal Terminal session: tmux pane (if the user has tmux attached on the session's TTY), zellij pane when detected from the shell environment, or bare shell. Tmux detection is live — attaching or detaching tmux changes the next response immediately.
 
-Remote-session flags (set `--ssh-connection` or `--mosh-port`; `--mosh-host` only applies with `--mosh-port`):
+Remote-session flags (set exactly one identifier; `--mosh-host` only applies with `--mosh-port`):
 
 | param | value |
 |---|---|
 | `ssh-connection` | Verbatim `$SSH_CONNECTION` from inside the session (`"<client_ip> <client_port> <server_ip> <server_port>"`). iOS captures this once via ssh-exec right after the session opens. |
 | `mosh-port` | Server-side UDP port that `mosh-server` is listening on for the session. iOS already knows it from the `MOSH CONNECT <port> <key>` handshake. |
 | `mosh-host` | Optional disambiguation hint for the server-side bind address. It is only needed when two mosh-servers share the same port on different interfaces (e.g. one over Tailscale, one over LAN). If the hint does not match but the port has only one local binding, the daemon uses that binding. Without a matching hint, ambiguous lookups fail explicitly rather than returning a guessed session. |
+| `et-client-id` | Eternal Terminal's 16-character client id from the ET handshake. ET uses a shared `etserver`, so the daemon resolves the per-session `etterminal` process by client id. |
+| `et` | Eternal Terminal fallback for manual smoke tests. Only succeeds when exactly one `etterminal` process is visible; otherwise use `et-client-id`. |
 
 Tmux response:
 
@@ -403,7 +405,7 @@ Shell response (no multiplexer detected):
 }
 ```
 
-Resolution: the daemon finds the session's login shell (env-walk for SSH, UDP-port-owner for Mosh), reads its controlling TTY, and asks `tmux list-clients` whether anything is attached. If yes, returns that session's active pane via `tmux display-message`. If no, reads the shell's cwd directly (`/proc/<pid>/cwd` on Linux, `lsof -d cwd` on macOS) and resolves Git state.
+Resolution: the daemon finds the session's login shell (env-walk for SSH, UDP-port-owner for Mosh, `etterminal` child shell for ET), reads its controlling TTY, and asks `tmux list-clients` whether anything is attached. If yes, returns that session's active pane via `tmux display-message`. If no, reads the shell's cwd directly (`/proc/<pid>/cwd` on Linux, `lsof -d cwd` on macOS) and resolves Git state.
 
 ### `moshi-hook cwd-list --json`
 
