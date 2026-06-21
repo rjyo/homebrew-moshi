@@ -70,7 +70,7 @@ Every frame uses the same shape. Fields are optional, interpreted per `type`. Un
 ```jsonc
 {
   "type": "approval.request",
-  "source": "claude",                    // "claude" | "codex" | "opencode"
+  "source": "opencode",                  // blocking approval adapters
   "sessionId": "abc-123",
   "actionId": "act_01HXY…",              // correlates request/response
 
@@ -111,8 +111,8 @@ Every frame uses the same shape. Fields are optional, interpreted per `type`. Un
 
 | Direction | `type` | Purpose |
 |---|---|---|
-| Hook → daemon | `approval.request` | Block until daemon returns a decision. |
-| Hook → daemon | `session.update` | Notify daemon of session state change. |
+| Hook → daemon | `approval.request` | Block until daemon returns a decision. Used by blocking approval adapters. |
+| Hook → daemon | `session.update` | Notify daemon of session state change. Claude/Codex terminal approvals use this with `category:"approval_required"` and, when a terminal target is available, `actionId` + `phase:"waitingForApproval"`. |
 | Hook → daemon | `session.closed` | Session ended. |
 | Daemon → hook | `approval.response` | Decision for prior `approval.request` (matched by `actionId`). |
 | Daemon → hook | `ack` | Ack of a fire-and-forget message. |
@@ -122,12 +122,13 @@ Every frame uses the same shape. Fields are optional, interpreted per `type`. Un
 
 ```jsonc
 // → daemon
-{"type":"approval.request","source":"claude","sessionId":"s1","actionId":"act_1",
- "category":"shell","toolName":"Bash","title":"Run shell","message":"rm -rf …",
- "expiresAt":"2026-04-26T12:01:00Z","requestedAt":"2026-04-26T12:00:00Z"}
+{"type":"session.update","source":"claude","sessionId":"s1","actionId":"act_1",
+ "phase":"waitingForApproval","category":"approval_required","toolName":"Bash",
+ "title":"Run shell","message":"rm -rf …","terminalKind":"tmux","tmuxPane":"%7",
+ "requestedAt":"2026-04-26T12:00:00Z"}
 
 // ← daemon
-{"type":"approval.response","actionId":"act_1","accepted":true,"decision":"approve"}
+{"type":"ack","sessionId":"s1"}
 ```
 
 ---
@@ -249,7 +250,7 @@ Both directions share one shape:
 | Direction | `type` | Purpose |
 |---|---|---|
 | Daemon → server | `hello` | Sent immediately after connect. |
-| Daemon → server | `approval.request` | Forwarded from a hook. |
+| Daemon → server | `approval.request` / `pending-action.open` | Forwarded from a blocking hook or opened by the TUI bridge. |
 | Server → daemon | `approval.decision` | `actionId` + `decision` + optional `reason`. |
 | Server → daemon | `ping` | Keepalive. |
 | Daemon → server | `pong` | Reply to `ping`. |

@@ -47,6 +47,8 @@ Inbox behavior:
 | User interrupt | Publishes `task_complete`; if the user immediately gives new instructions, publishes `session_started` again |
 | Agent asks the user a question | Publishes `approval_required`; when answered outside Moshi, follows with a resumed running state |
 
+Claude approvals remain compatible with Claude's own terminal flow. Moshi may
+offer a remote approval experience when the local environment can be verified.
 Claude-specific debug, notification, subagent, batch, and compaction events are
 not surfaced unless they map cleanly to the category model above.
 
@@ -62,9 +64,9 @@ not surfaced unless they map cleanly to the category model above.
 | Session clears | Publishes `session_ended` before the next visible turn |
 | User interrupt | Publishes `task_complete` when detected |
 
-Codex approvals remain compatible with Codex's own terminal flow. Moshi may
-offer a remote approval experience when the local environment can be verified,
-but this document deliberately omits those mechanics.
+Codex approvals use the same native-terminal model: Moshi may offer remote
+approval when the local environment can be verified, but the agent's terminal
+prompt remains compatible.
 
 ### OpenCode
 
@@ -117,10 +119,18 @@ and keeps the default coverage to the same low-volume lifecycle events as OMP:
 
 ### Cursor CLI
 
-Cursor CLI support is planned. The target behavior is the same normalized
-category model: session start/end, tool progress, approval, and turn complete.
-Reasoning traces, editor-internal events, file watchers, and streaming partials
-should remain out of scope.
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| User submits a prompt | Publishes or updates `session_started` |
+| Permission request (shell command, MCP call, or file read) | Publishes `approval_required` |
+| File edit | Publishes file-edit progress |
+| Agent responds | Stored silently; the turn result carries the visible state |
+| Agent stops | Publishes `task_complete` |
+
+Cursor approvals use the same native-terminal model: Moshi may offer remote
+approval when the local environment can be verified, while the terminal prompt
+remains compatible. Reasoning traces, editor-internal events, file watchers, and
+streaming partials are not surfaced.
 
 ---
 
