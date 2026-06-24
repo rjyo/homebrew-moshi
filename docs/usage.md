@@ -53,14 +53,14 @@ Useful host commands:
 
 | Command | What it does |
 |---|---|
-| `host setup [--name <n>] [--port <p>] [--user <u>] [--force]` | Start an Easy Pair setup session, print the QR, and pair this daemon after claim. |
+| `host setup [--name <n>] [--host <h>] [--port <p>] [--user <u>] [--force]` | Start an Easy Pair setup session, print the QR, and pair this daemon after claim. |
 | `host list` | List local Moshi SSH/Mosh pairings installed on this host. |
 | `host revoke <id>` | Remove a Moshi host public key from `authorized_keys`. |
 | `host enable-ssh` | On macOS, open/enable Remote Login prerequisites where supported. |
 
 `moshi-hook pair --token` is still available for manual daemon re-pairing. Easy Pair does not store the phone's user token on the host; it stores the host-scoped `hostSecret` used by inbox, Live Activity, Apple Watch events, usage sync, and approvals.
 
-By default, `host setup` picks the best reachable connection target it can detect. If the `tailscale` CLI is on PATH and reports `Running`, it uses your Tailscale MagicDNS name (or IPv4 fallback). Otherwise on Linux it uses the first usable private LAN IPv4; on macOS it uses Bonjour (`.local`) or the OS hostname. If the chosen address is wrong for your network, edit the host on the iOS app after pairing.
+By default, `host setup` shows an address selector before generating the QR. Use up/down, `1..n`, or Enter to choose a detected address, or choose the final option to type a public IP/hostname for VPS and cloud hosts. Pass `--host <hostname-or-ip>` to skip the selector in scripts. Non-interactive and `--json` runs keep the old automatic first match: Tailscale MagicDNS/IPv4, then LAN IPv4 on Linux, then Bonjour/hostname fallback.
 
 On macOS, `pair` stores secrets in Keychain by default. If you are pairing from SSH or another session where Keychain is locked or unavailable, either unlock the login keychain first:
 
