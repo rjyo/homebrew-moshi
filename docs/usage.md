@@ -3,7 +3,8 @@
 ```bash
 moshi-hook pair --token <pairing-token>   # 1. pair the agent-hooks daemon
 moshi-hook install                        # 2. write hook configs for installed agents
-moshi-hook serve                          # 3. run the daemon (or `brew services start moshi-hook`)
+moshi-hook service install                # 3. run the daemon persistently on Linux
+moshi-hook serve                          #    foreground fallback (or `brew services start moshi-hook` on macOS)
 ```
 
 After step 2, supported agents route their hooks through `moshi-hook`: Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Kimi, Qwen Code, Grok Build, OMP (Oh My Pi), and Pi. The daemon (`serve`) holds the WebSocket to Moshi and the local Unix socket that hooks talk to.
@@ -116,6 +117,9 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `diff [path] [--no-open] [--port N]` | Serve the embedded Git diff viewer for a local project directory. |
 | `install` | Write Moshi entries into supported agent config files. By default, only installs targets whose config root already exists and reports missing agents as skipped. Use `--target claude,codex,opencode,gemini,cursor,kimi,qwen,grok` to force or limit the set. Non-destructive: leaves user-owned hooks alone. OpenCode installs globally by default; use `--local` for `.opencode/plugins` in the current project. |
 | `uninstall` | Remove Moshi-owned entries from those files. For OpenCode, pass `--local` to remove a project-local install. |
+| `service install` | Linux only: write `~/.config/systemd/user/moshi-hook.service`, reload systemd, and `enable --now` the daemon. |
+| `service uninstall` | Linux only: disable the systemd user service and remove the generated unit. |
+| `service status` | Linux only: show `systemctl --user status moshi-hook.service --no-pager`. |
 | `serve [--gateway-listen 127.0.0.1:24543]` | Run the daemon and localhost diff gateway in the foreground. Single-instance via `flock` on a lockfile next to the socket. |
 | `status [--json]` | Pairing state, paths, WS connection. |
 | `update [--version vX.Y.Z]` | Update a Linux/manual install from `cdn.getmoshi.app`. Verifies the release checksum before replacing the current binary. Homebrew installs are left untouched; use `brew upgrade moshi-hook`. |
