@@ -121,9 +121,9 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `service uninstall` | Linux only: disable the systemd user service and remove the generated unit. |
 | `service status` | Linux only: show `systemctl --user status moshi-hook.service --no-pager`. |
 | `serve [--gateway-listen 127.0.0.1:24543]` | Run the daemon and localhost diff gateway in the foreground. Single-instance via `flock` on a lockfile next to the socket. |
-| `status [--json]` | Pairing state, paths, WS connection. |
+| `status [--json]` | Pairing state, paths, hook install state, and best-effort server attachment status for the paired host. |
 | `update [--version vX.Y.Z]` | Update a Linux/manual install from `cdn.getmoshi.app`. Verifies the release checksum before replacing the current binary. Homebrew installs are left untouched; use `brew upgrade moshi-hook`. |
-| `usage [--sync]` | Cached usage snapshots. `--sync` pushes them to the server. |
+| `usage [--sync]` | Cached usage snapshots. `--sync` pushes them to the server and reports whether this host is attached to Moshi Pro. |
 | `cwd-list [--json] [--limit N]` | Recent project working directories from local agent state (Claude, Codex, Cursor). Plain-text table by default; `--json` emits the shape the iOS preflight consumes. |
 | `servers [--ssh-connection \"<value>\"] [--mosh-port <p> [--mosh-host <ip>]] [--et-client-id <id>\|--et]` | Probe local TCP listeners and print HTTP web servers for SSH preflight (filtered to `text/html` responses, tagged with owning process + PID, one-entry-per-PID). With a session lookup, decorates each row with `isCurrentContext`. |
 | `servers kill --pid <pid> --port <port> [--host <host>] [--force=false]` | Terminate a discovered local HTTP server after re-validating that the PID and port still match the server list. |

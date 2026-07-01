@@ -209,6 +209,45 @@ Push usage snapshots.
 }
 ```
 
+Returns the sync count plus the server's current view of this host's license
+attachment. The daemon prints this so users can distinguish "usage synced" from
+"the app is reading a different license bucket".
+
+```jsonc
+{
+  "success": true,
+  "count": 1,
+  "host": {
+    "hostId": "host_aBcD…",
+    "displayName": "jyo-mbp",
+    "premiumAttached": true,
+    "licenseAttached": true,
+    "licenseUsable": true,
+    "licenseStatus": "active",
+    "usageScope": "license",              // "license" | "direct"
+    "reason": "license_active",
+    "message": "This host is attached to an active Moshi Pro license."
+  }
+}
+```
+
+### `GET /hosts/:hostId/status`
+
+Host-secret authenticated status check used by `moshi-hook status`.
+
+```jsonc
+{
+  "hostId": "host_aBcD…",
+  "displayName": "jyo-mbp",
+  "premiumAttached": false,
+  "licenseAttached": false,
+  "licenseUsable": false,
+  "usageScope": "direct",
+  "reason": "no_license",
+  "message": "This host is not attached to a Moshi Pro license. Usage sync is private to the paired device."
+}
+```
+
 ### Errors
 
 ```json
