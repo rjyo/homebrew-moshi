@@ -384,6 +384,8 @@ Discovers listening loopback HTTP services and returns each origin as the host s
 
 Filtering: only responses whose `Content-Type` is `text/html` (or `application/xhtml+xml`) are surfaced. AirTunes, proxy admin UIs, and JSON-only APIs are dropped — they're not openable in a WebView.
 
+Container servers: ports published from Docker/OrbStack containers are discovered via `docker inspect` and surfaced with `source: "docker"`, `process: "docker:<container>"`, and no `pid` (the host-side listener is a forwarding proxy, not the dev server; `cwd`/`git` are resolved from the container's bind-mounted working dir). Servers without a `pid` are not killable — `POST /v1/servers/kill` requires a PID — so clients should hide the kill affordance when `pid` is absent and can use `source` to badge the entry as a container.
+
 `isCurrentContext` is always `false` for the context-less global server list. When a session lookup is supplied, the CLI mirrors the `/events` WebSocket decoration: `true` means Moshi could attribute the listener to the current shell context or the current tmux session.
 
 Transport: **same-port forwarding only.** Clients are expected to open an SSH local forward `phone:<port> → host:<port>` for each origin and load `http://localhost:<port>` in the WebView, matching the host URL exactly. The gateway does not implement a path-prefix reverse proxy (`/proxy/http/...`) and will not — path-prefix proxying breaks HMR (absolute WebSocket paths), OAuth (`Origin` / redirect URI), and `SameSite` cookies. If the phone hits a local port collision, surface an error to the user; do not rewrite URLs.
