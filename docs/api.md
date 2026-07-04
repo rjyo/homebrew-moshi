@@ -154,8 +154,10 @@ Manual daemon pairing/re-pairing. Authenticated with the **pairing token**.
 
 ```jsonc
 // request
-{"hostId":"host_existing","displayName":"jyo-mbp","platform":"macos"}
+{"hostId":"host_existing","hostSecret":"secret_existing","displayName":"jyo-mbp","platform":"macos"}
 // hostId optional — pass to rotate secret; omit on first pair.
+// hostSecret optional — pass with hostId to prove ownership when re-attaching
+// the host to a new pairing token/license after subscription changes.
 // platform: "macos" | "linux" | "other"
 
 // response
@@ -356,6 +358,25 @@ Terminates a discovered local HTTP server. The daemon re-runs server discovery a
 // response
 { "killed": true, "forced": false, "pid": 27753, "port": 5173, "server": { /* discovered server */ } }
 ```
+
+### `POST /v1/paste?<session lookup>`
+
+Injects an image into the caller's multiplexer pane: the tmux pane, the focused herdr pane, or the zellij pane (falling back to the session's focused pane when the context carries no pane id, since zellij focused-pane actions silently no-op without an attached client). Takes the same session-lookup query params as `/events` (`ssh-connection`, `mosh-port`[+`mosh-host`], or `et-client-id`); the pane is resolved live on the host, so the app never passes (possibly stale) pane ids. Bodies are capped at 64 MB.
+
+```jsonc
+// request
+{ "data": "<base64 image bytes>", "mimeType": "image/png" }
+
+// response
+{ "ok": true, "mode": "clipboard", "verified": true, "path": "/tmp/moshi-paste-123.png" }
+```
+
+The daemon writes the image to `$TMPDIR/moshi-paste-*` (stale files are swept after 24h) and picks a mode:
+
+- `clipboard` — when the pane runs an agent and a clipboard is reachable (macOS GUI session via `osascript`, Wayland via `wl-copy`, X11 via `xclip`; display env is read from the tmux session/global environment since the daemon itself has none — zellij and herdr have no queryable session env, so those targets use the daemon's env), seed the OS clipboard and send Ctrl+V so the agent picks up the image inline. The key grammar differs per multiplexer: `C-v` (tmux send-keys), `ctrl+v` (`herdr pane send-keys`), `"Ctrl v"` (`zellij action send-keys`) — each rejects the others' tokens.
+- `path` — otherwise (headless hosts, plain shell panes), type the temp-file path literally into the pane (`tmux send-keys -l` / `herdr pane send-text` / `zellij action write-chars`).
+
+`verified` reports whether the pane's content fingerprint changed after injection (tmux `capture-pane` + cursor, `herdr pane read`, `zellij action dump-screen`; polled up to 1.5s). An unverified Ctrl+V that provably changed nothing falls back to path injection within the same request. Errors: `404` when no live session matches the lookup, `422` when the session is a bare shell or the pane/session can't be identified (callers should fall back to their SSH paste path).
 
 ---
 

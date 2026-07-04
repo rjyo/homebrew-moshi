@@ -108,7 +108,7 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 
 | Command | What it does |
 |---|---|
-| `pair --token <t> [--name <n>] [--store keychain\|file]` | Pair the agent-hooks daemon. Token comes from the Moshi mobile app. Re-running rotates the secret. macOS defaults to `keychain` until a store preference is saved; use `file` for headless sessions. |
+| `pair --token <t> [--name <n>] [--store keychain\|file]` | Pair the agent-hooks daemon. Token comes from the Moshi mobile app. Re-running rotates the secret and can repair this host after a license/subscription change. macOS defaults to `keychain` until a store preference is saved; use `file` for headless sessions. |
 | `unpair` | Remove the agent-hooks secret and server registration. |
 | `host setup` | Start an Easy Pair SSH/Mosh setup session and print a QR for Moshi to scan. |
 | `host list` | List local Moshi host SSH pairings. |
