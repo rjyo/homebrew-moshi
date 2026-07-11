@@ -458,6 +458,26 @@ Zellij response:
 }
 ```
 
+Herdr response (scroll fields mirror tmux; `copyMode` is true while the pane is scrolled back):
+
+```json
+{
+  "kind": "herdr",
+  "herdr": {
+    "session": "work/api",
+    "rawSession": "work",
+    "paneId": "w-api-2",
+    "workspaceId": "w-api",
+    "tabId": "w-api:2",
+    "tab": "codex",
+    "copyMode": true,
+    "scrollPosition": 42,
+    "historySize": 900
+  },
+  "cwd": "/Users/me/projects/foo"
+}
+```
+
 Shell response (no multiplexer detected):
 
 ```json
