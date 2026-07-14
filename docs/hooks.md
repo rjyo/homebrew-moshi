@@ -95,15 +95,17 @@ Grok Build follows the same broad behavior as Claude-compatible hooks:
 
 ### OMP (Oh My Pi)
 
-OMP uses its TypeScript hook API. Moshi installs a global hook module and keeps
-the default coverage to low-volume lifecycle events:
+OMP uses its TypeScript extension API. Moshi installs a global extension and
+keeps the default coverage to low-volume lifecycle and native approval events:
 
 | Agent behavior | Moshi behavior |
 | --- | --- |
 | Session loads | Stored silently until the first prompt |
 | User submits a prompt | Publishes or updates `session_started` |
-| Agent loop ends | Publishes `task_complete` |
-| Tool activity | Not installed by default; OMP tool hooks are synchronous and should stay opt-in |
+| Main session settles | Publishes `task_complete` |
+| Permission request | Publishes `approval_required`; the native terminal remains the source of truth |
+| Session shuts down | Publishes `session_ended` |
+| Tool activity | Not installed by default |
 
 ### Pi
 
@@ -114,8 +116,42 @@ and keeps the default coverage to the same low-volume lifecycle events as OMP:
 | --- | --- |
 | Session loads | Stored silently until the first prompt |
 | User submits a prompt | Publishes or updates `session_started` |
-| Agent loop ends | Publishes `task_complete` |
+| Agent fully settles | Publishes `task_complete` after retries, compaction, and queued follow-ups finish |
+| Session shuts down | Publishes `session_ended` |
 | Tool activity | Not installed by default; Pi tool hooks are synchronous and should stay opt-in |
+
+### Hermes Agent
+
+Hermes uses a user plugin enabled through its normal plugin configuration. The
+plugin observes lifecycle and approval events but never approves, denies, or
+blocks Hermes itself.
+
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| New session | Stored silently until the first prompt |
+| User submits a prompt | Publishes or updates `session_started` |
+| Agent completes or is interrupted | Publishes `task_complete` |
+| Approval request in the interactive CLI/TUI | Publishes `approval_required` |
+| Approval resolves | Clears the pending action without publishing another completion |
+| Session finalizes | Publishes `session_ended` |
+
+Hermes keeps ownership of its approval prompt. Moshi may answer that prompt
+remotely only when its terminal bridge can verify the visible command and
+approval menu. Smart-mode and gateway decisions are observed by Hermes alone
+and are not exposed as terminal actions.
+
+### Antigravity
+
+Antigravity uses its global command-hook configuration. Moshi registers only
+model-invocation and stop lifecycle hooks; it does not register a tool-policy
+hook or change Antigravity's native approval behavior.
+
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| Model invocation begins | Publishes or updates `session_started` once per visible turn |
+| Agent becomes fully idle | Publishes `task_complete` |
+| Prompt and result text | Extracted best-effort when the available transcript contains it |
+| Tool approval | Not intercepted |
 
 ### Cursor CLI
 

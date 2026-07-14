@@ -7,7 +7,7 @@ moshi-hook service install                # 3. run the daemon persistently on Li
 moshi-hook serve                          #    foreground fallback (or `brew services start moshi-hook` on macOS)
 ```
 
-After step 2, supported agents route their hooks through `moshi-hook`: Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Kimi, Qwen Code, Grok Build, OMP (Oh My Pi), and Pi. The daemon (`serve`) holds the WebSocket to Moshi and the local Unix socket that hooks talk to.
+After step 2, supported agents route their hooks through `moshi-hook`: Claude Code, Codex, OpenCode, Gemini CLI, Antigravity, Cursor, Kimi, Qwen Code, Grok Build, OMP (Oh My Pi), Pi, and Hermes Agent. The daemon (`serve`) holds the WebSocket to Moshi and the local Unix socket that hooks talk to.
 
 ## Project tmux launcher
 
@@ -99,9 +99,13 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `CLAUDE_CONFIG_DIR` | Override Claude Code config dir for Claude hook install/status/uninstall. |
 | `CODEX_HOME` | Override Codex config dir for hook install/status/uninstall. |
 | `OPENCODE_CONFIG_DIR` | Override OpenCode global config/plugin dir for hook install/status/uninstall. |
+| `ANTIGRAVITY_CONFIG_DIR` | Override Antigravity's global `config` directory for hook install/status/uninstall. |
+| `OMP_PROFILE` / `PI_PROFILE` | Select the active named OMP profile (`OMP_PROFILE` takes precedence). |
+| `PI_CODING_AGENT_DIR` / `PI_CONFIG_DIR` | Override Pi/OMP agent and config directories. |
 | `CURSOR_CONFIG_DIR` | Override Cursor config dir for hook install/status/uninstall. |
 | `KIMI_SHARE_DIR` | Override Kimi config/share dir for hook install/status/uninstall. |
 | `GROK_HOME` | Override Grok Build config dir for hook install/status/uninstall. |
+| `HERMES_HOME` | Override Hermes Agent's config, plugin, and state directory. |
 | `XDG_STATE_HOME` / `XDG_CONFIG_HOME` / `XDG_RUNTIME_DIR` | Standard XDG dirs (Linux). |
 
 ## Subcommands
@@ -115,7 +119,7 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `host revoke <id>` | Remove a Moshi host SSH key from `authorized_keys`. |
 | `host enable-ssh` | Help enable SSH prerequisites on macOS. |
 | `diff [path] [--no-open] [--port N]` | Serve the embedded Git diff viewer for a local project directory. |
-| `install` | Write Moshi entries into supported agent config files. By default, only installs targets whose config root already exists and reports missing agents as skipped. Use `--target claude,codex,opencode,gemini,cursor,kimi,qwen,grok` to force or limit the set. Non-destructive: leaves user-owned hooks alone. OpenCode installs globally by default; use `--local` for `.opencode/plugins` in the current project. |
+| `install` | Write Moshi entries into supported agent config files. By default, only installs targets whose config root already exists and reports missing agents as skipped. Use `--target claude,codex,opencode,gemini,antigravity,cursor,kimi,qwen,grok,omp,pi,hermes` to force or limit the set. Non-destructive: leaves user-owned hooks alone. OpenCode installs globally by default; use `--local` for `.opencode/plugins` in the current project. |
 | `uninstall` | Remove Moshi-owned entries from those files. For OpenCode, pass `--local` to remove a project-local install. |
 | `service install` | Linux only: write `~/.config/systemd/user/moshi-hook.service`, reload systemd, and `enable --now` the daemon. |
 | `service uninstall` | Linux only: disable the systemd user service and remove the generated unit. |
@@ -131,7 +135,7 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `logs [-f]` | Tail the daemon log. |
 | `version` | Version, commit SHA, build date. |
 
-Hidden subcommands (`claude-hook`, `codex-hook`, `opencode-event`, `opencode-permission`, `gemini-hook`, `cursor-hook`, `kimi-hook`, `qwen-hook`, `grok-hook`, `omp-hook`, `pi-hook`) are invoked by the agents themselves through the configs `install` writes — you won't run them by hand.
+Hidden subcommands (`claude-hook`, `codex-hook`, `opencode-event`, `opencode-permission`, `gemini-hook`, `antigravity-hook`, `cursor-hook`, `kimi-hook`, `qwen-hook`, `grok-hook`, `omp-hook`, `pi-hook`, `hermes-hook`) are invoked by the agents themselves through the configs `install` writes — you won't run them by hand.
 
 ### `cwd-list` — recent project directories
 
@@ -196,12 +200,14 @@ moshi-hook context --et-client-id abcdefghijklmnop
 | Codex | `$CODEX_HOME/hooks.json` plus `$CODEX_HOME/config.toml` feature flag, or `~/.codex/...` |
 | OpenCode | `$OPENCODE_CONFIG_DIR/plugins/moshi-hooks.ts`, `$XDG_CONFIG_HOME/opencode/plugins/moshi-hooks.ts`, or `~/.config/opencode/plugins/moshi-hooks.ts`; `.opencode/plugins/moshi-hooks.ts` with `--local` |
 | Gemini CLI | `~/.gemini/settings.json` |
+| Antigravity | `$ANTIGRAVITY_CONFIG_DIR/hooks.json` or `~/.gemini/config/hooks.json` |
 | Cursor | `$CURSOR_CONFIG_DIR/hooks.json` or `~/.cursor/hooks.json` |
 | Kimi | `$KIMI_SHARE_DIR/config.toml` or `~/.kimi/config.toml` |
 | Qwen Code | `~/.qwen/settings.json` |
 | Grok Build | `$GROK_HOME/hooks/moshi-hooks.json` or `~/.grok/hooks/moshi-hooks.json` |
-| OMP (Oh My Pi) | `$OMP_CODING_AGENT_DIR/hooks/post/moshi-hooks.ts`, `$OMP_PROCESSING_AGENT_DIR/hooks/post/moshi-hooks.ts`, `$PI_CODING_AGENT_DIR/hooks/post/moshi-hooks.ts`, `$PI_CONFIG_DIR/agent/hooks/post/moshi-hooks.ts`, or `~/.omp/agent/hooks/post/moshi-hooks.ts` |
+| OMP (Oh My Pi) | `$OMP_CODING_AGENT_DIR/extensions/moshi-hooks.ts`, `$OMP_PROCESSING_AGENT_DIR/extensions/moshi-hooks.ts`, `$PI_CODING_AGENT_DIR/extensions/moshi-hooks.ts`, `$PI_CONFIG_DIR/agent/extensions/moshi-hooks.ts`, `~/.omp/profiles/$OMP_PROFILE/agent/extensions/moshi-hooks.ts`, or `~/.omp/agent/extensions/moshi-hooks.ts` |
 | Pi | `$PI_CODING_AGENT_DIR/extensions/moshi-hooks.ts`, `$PI_CONFIG_DIR/agent/extensions/moshi-hooks.ts`, or `~/.pi/agent/extensions/moshi-hooks.ts` |
+| Hermes Agent | `$HERMES_HOME/plugins/moshi-hooks/{plugin.yaml,__init__.py}` or `~/.hermes/plugins/moshi-hooks/...`; installer also enables `moshi-hooks` in the matching `config.yaml` |
 
 Default `install` skips a managed file when the agent's config root is missing, for example `~/.cursor` or `~/.gemini`. Passing `--target` preserves the old create-if-missing behavior for that target.
 

@@ -112,7 +112,7 @@ Every frame uses the same shape. Fields are optional, interpreted per `type`. Un
 | Direction | `type` | Purpose |
 |---|---|---|
 | Hook → daemon | `approval.request` | Block until daemon returns a decision. Used by blocking approval adapters. |
-| Hook → daemon | `session.update` | Notify daemon of session state change. Claude/Codex terminal approvals use this with `category:"approval_required"` and, when a terminal target is available, `actionId` + `phase:"waitingForApproval"`. |
+| Hook → daemon | `session.update` | Notify daemon of session state change. Claude/Codex/Hermes terminal approvals use this with `category:"approval_required"` and, when a terminal target is available, `actionId` + `phase:"waitingForApproval"`. |
 | Hook → daemon | `session.closed` | Session ended. |
 | Daemon → hook | `approval.response` | Decision for prior `approval.request` (matched by `actionId`). |
 | Daemon → hook | `ack` | Ack of a fire-and-forget message. |
