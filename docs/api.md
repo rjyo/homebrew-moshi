@@ -16,7 +16,7 @@ Approval round-trip across all four components. Numbers reference the steps belo
   user's host                                 cloud                user's phone
 
   +------------+
-  | coding     |  Claude / Codex / OpenCode
+  | coding     |  Claude / Codex / OpenCode / Pi / OMP
   | agent      |
   +-----+------+
         | (1) hook fires; agent spawns short-lived subprocess
@@ -335,17 +335,17 @@ Starts or reuses an embedded diff viewer session for a Git repository.
 
 Diff sessions expire after 15 minutes idle and are served under `/apps/diff/:sessionId/`. Diff payloads are read from the host filesystem and never sent to the Moshi backend.
 
-### `GET /v1/transcripts?session=<id>[&source=claude|codex]`
+### `GET /v1/transcripts?session=<id>[&source=claude|codex|opencode|pi|omp]`
 
-Opens a local WebSocket stream for a live agent transcript. New clients should pass `source`; when omitted for backward compatibility, the gateway tries Claude first, then Codex. Claude transcripts are resolved from `~/.claude/projects`; Codex transcripts are resolved from `$CODEX_HOME/sessions` or `~/.codex/sessions` rollout files. Transcript bytes stay on the host and are streamed only over the local forwarded gateway. If Codex resume creates a newer rollout for the same session id, reconnect to resolve the newest file.
+Opens a local WebSocket stream for a live agent transcript. New clients should pass `source`; when omitted for backward compatibility, the gateway tries Claude first, then Codex. Claude transcripts prefer the exact per-session path captured from hook events (including `CLAUDE_CONFIG_DIR` profiles), then fall back to `~/.claude/projects` for older session state. Codex transcripts are resolved from `$CODEX_HOME/sessions` or `~/.codex/sessions` rollout files. Pi and OMP transcripts use the exact JSONL path reported by the installed extension, so profiles and custom session locations work without a directory scan. OMP validation understands its v3 fixed-width title slot before the session header. OpenCode is proxied through the live local server recorded by its plugin. Transcript bytes stay on the host and are streamed only over the local forwarded gateway. If Codex resume creates a newer rollout for the same session id, reconnect to resolve the newest file.
 
 Server messages are JSON objects with `type` (`backlog`, `older`, `append`, `reset`, or `error`), `source`, physical `line` numbers, and raw JSONL rows for client-side rendering. Clients can request older rows with `{"type":"older","beforeLine":123,"limit":50}`.
 
-Oversized rows are redacted before streaming: long strings are truncated, and inline image payloads (Claude `source.data`, Codex `image_url` data URLs) are replaced with a stub carrying `truncated: true`, `media_type`, decoded `bytes`, and `width`/`height` when the format is recognized. Clients fetch the actual bytes via the blob endpoint below.
+Oversized rows are redacted before streaming: long strings are truncated, and inline image payloads (Claude `source.data`, Pi/OMP `data`, Codex `image_url` data URLs) are replaced with a stub carrying `truncated: true`, `media_type`, decoded `bytes`, and `width`/`height` when the format is recognized. Clients fetch the actual bytes via the blob endpoint below.
 
-### `GET /v1/transcripts/blob?session=<id>&line=<n>[&block=<i>][&source=claude|codex]`
+### `GET /v1/transcripts/blob?session=<id>&line=<n>[&block=<i>][&source=claude|codex|opencode|pi|omp]`
 
-Serves the raw image bytes of one content block of one transcript line, re-read from disk on demand (so redaction never loses data). `line` is the physical JSONL line index as reported by the stream; `block` (default 0) indexes the row's content blocks — `message.content[i]` for Claude, `payload.content[i]` / `payload.output[i]` for Codex. For Codex `view_image` function calls the endpoint resolves the call's absolute file `path` on the host and serves the file when it sniffs as an image (capped at 32 MB). Responds with the image `Content-Type` and long-lived cache headers (transcript lines are immutable); returns 404 when the addressed block is not an image.
+Serves the raw image bytes of one content block of one transcript line, re-read from disk or re-fetched from OpenCode on demand (so redaction never loses data). `line` is the physical transcript line index reported by the stream; `block` (default 0) indexes `message.content[i]` for Claude/Pi/OMP, `payload.content[i]` / `payload.output[i]` for Codex, or the flattened OpenCode image attachments. OMP `blob:sha256:` image references resolve through the profile/XDG-aware `blobs/` directory beside its managed `sessions/` tree. For Codex `view_image` function calls the endpoint resolves the call's absolute file `path` on the host and serves the file when it sniffs as an image (capped at 32 MB). Responds with the image `Content-Type` and cache headers; returns 404 when the addressed block is not an image.
 
 ### `POST /v1/servers/kill`
 

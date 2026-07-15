@@ -96,17 +96,22 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `MOSHI_HOOK_GATEWAY_LISTEN` | Override the host gateway listen address. |
 | `MOSHI_STATE_DIR` / `MOSHI_CONFIG_DIR` | Override state/config dirs. |
 | `MOSHI_HOOK_CONFIG_DIR` | Override the config dir for `config.toml` gateway settings. |
-| `CLAUDE_CONFIG_DIR` | Override Claude Code config dir for Claude hook install/status/uninstall. |
+| `CLAUDE_CONFIG_DIR` | Override the Claude Code profile used by hook install/status/uninstall; active hooked sessions also register this profile for Chat View, usage, and account labels. |
 | `CODEX_HOME` | Override Codex config dir for hook install/status/uninstall. |
 | `OPENCODE_CONFIG_DIR` | Override OpenCode global config/plugin dir for hook install/status/uninstall. |
 | `ANTIGRAVITY_CONFIG_DIR` | Override Antigravity's global `config` directory for hook install/status/uninstall. |
 | `OMP_PROFILE` / `PI_PROFILE` | Select the active named OMP profile (`OMP_PROFILE` takes precedence). |
-| `PI_CODING_AGENT_DIR` / `PI_CONFIG_DIR` | Override Pi/OMP agent and config directories. |
+| `PI_CODING_AGENT_DIR` / `PI_CONFIG_DIR` | Override Pi/OMP agent and config directories; Chat View follows the exact transcript path reported by their installed extensions. |
+| `PI_CODING_AGENT_SESSION_DIR` | Override Pi's session storage directory. |
 | `CURSOR_CONFIG_DIR` | Override Cursor config dir for hook install/status/uninstall. |
 | `KIMI_SHARE_DIR` | Override Kimi config/share dir for hook install/status/uninstall. |
 | `GROK_HOME` | Override Grok Build config dir for hook install/status/uninstall. |
 | `HERMES_HOME` | Override Hermes Agent's config, plugin, and state directory. |
 | `XDG_STATE_HOME` / `XDG_CONFIG_HOME` / `XDG_RUNTIME_DIR` | Standard XDG dirs (Linux). |
+
+Claude profiles seen in hook events are discovered automatically, including
+their exact transcript paths, usage, and account identities. Discovery persists
+across daemon restarts.
 
 ## Subcommands
 

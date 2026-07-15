@@ -49,6 +49,8 @@ Inbox behavior:
 
 Claude approvals remain compatible with Claude's own terminal flow. Moshi may
 offer a remote approval experience when the local environment can be verified.
+Multiple Claude profiles remain isolated: Chat View follows the session's own
+transcript, while usage and inbox account labels use that profile's identity.
 Claude-specific debug, notification, subagent, batch, and compaction events are
 not surfaced unless they map cleanly to the category model above.
 
@@ -96,7 +98,9 @@ Grok Build follows the same broad behavior as Claude-compatible hooks:
 ### OMP (Oh My Pi)
 
 OMP uses its TypeScript extension API. Moshi installs a global extension and
-keeps the default coverage to low-volume lifecycle and native approval events:
+keeps the default coverage to low-volume lifecycle and native approval events.
+The extension also records OMP's stable session id and exact v3 JSONL path so
+Chat View can follow the active profile and XDG/custom agent directory:
 
 | Agent behavior | Moshi behavior |
 | --- | --- |
@@ -110,7 +114,10 @@ keeps the default coverage to low-volume lifecycle and native approval events:
 ### Pi
 
 Pi uses its TypeScript extension API. Moshi installs a global extension module
-and keeps the default coverage to the same low-volume lifecycle events as OMP:
+and keeps the default coverage to the same low-volume lifecycle events as OMP.
+The extension also records Pi's stable session id and exact JSONL path so Chat
+View can follow sessions stored under either the default or a custom session
+directory:
 
 | Agent behavior | Moshi behavior |
 | --- | --- |
