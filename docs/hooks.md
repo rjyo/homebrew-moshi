@@ -172,8 +172,10 @@ hook or change Antigravity's native approval behavior.
 
 Cursor approvals use the same native-terminal model: Moshi may offer remote
 approval when the local environment can be verified, while the terminal prompt
-remains compatible. Reasoning traces, editor-internal events, file watchers, and
-streaming partials are not surfaced.
+remains compatible. Cursor `--force` / `--yolo` actions stay local and do not
+create approval rows because Run Everything has already removed the human
+decision. Reasoning traces, editor-internal events, file watchers, and streaming
+partials are not surfaced.
 
 ---
 
