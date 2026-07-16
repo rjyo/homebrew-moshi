@@ -92,6 +92,7 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `MOSHI_PAIRING_TOKEN` | Pairing token (alternative to `--token`). |
 | `MOSHI_API_BASE` | API base URL (alternative to `--base-url`). |
 | `MOSHI_SOCKET_PATH` | Override the Unix socket path. |
+| `MOSHI_HERDR_PATH` | Absolute path to the `herdr` CLI when a service manager cannot discover it from `PATH`. |
 | `MOSHI_HOOK_CDN` | CDN base URL for `update` downloads. |
 | `MOSHI_HOOK_GATEWAY_LISTEN` | Override the host gateway listen address. |
 | `MOSHI_STATE_DIR` / `MOSHI_CONFIG_DIR` | Override state/config dirs. |

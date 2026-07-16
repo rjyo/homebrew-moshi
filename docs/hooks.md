@@ -107,7 +107,7 @@ Chat View can follow the active profile and XDG/custom agent directory:
 | Session loads | Stored silently until the first prompt |
 | User submits a prompt | Publishes or updates `session_started` |
 | Main session settles | Publishes `task_complete` |
-| Permission request | Publishes `approval_required`; the native terminal remains the source of truth |
+| Permission request | Publishes `approval_required`; a terminal answer follows with `OMP resumed` |
 | Session shuts down | Publishes `session_ended` |
 | Tool activity | Not installed by default |
 
@@ -124,6 +124,7 @@ directory:
 | Session loads | Stored silently until the first prompt |
 | User submits a prompt | Publishes or updates `session_started` |
 | Agent fully settles | Publishes `task_complete` after retries, compaction, and queued follow-ups finish |
+| Permission request | Publishes `approval_required`; a terminal answer follows with `Pi resumed` |
 | Session shuts down | Publishes `session_ended` |
 | Tool activity | Not installed by default; Pi tool hooks are synchronous and should stay opt-in |
 
