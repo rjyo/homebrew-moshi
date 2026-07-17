@@ -105,7 +105,8 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `PI_CODING_AGENT_DIR` / `PI_CONFIG_DIR` | Override Pi/OMP agent and config directories; Chat View follows the exact transcript path reported by their installed extensions. |
 | `PI_CODING_AGENT_SESSION_DIR` | Override Pi's session storage directory. |
 | `CURSOR_CONFIG_DIR` | Override Cursor config dir for hook install/status/uninstall. |
-| `KIMI_SHARE_DIR` | Override Kimi config/share dir for hook install/status/uninstall. |
+| `KIMI_CODE_HOME` | Override the current Kimi Code data/config directory for hook install/status/uninstall. |
+| `KIMI_SHARE_DIR` | Override the legacy kimi-cli config/share directory when `KIMI_CODE_HOME` is unset. |
 | `GROK_HOME` | Override Grok Build config dir for hook install/status/uninstall. |
 | `HERMES_HOME` | Override Hermes Agent's config, plugin, and state directory. |
 | `XDG_STATE_HOME` / `XDG_CONFIG_HOME` / `XDG_RUNTIME_DIR` | Standard XDG dirs (Linux). |
@@ -208,7 +209,7 @@ moshi-hook context --et-client-id abcdefghijklmnop
 | Gemini CLI | `~/.gemini/settings.json` |
 | Antigravity | `$ANTIGRAVITY_CONFIG_DIR/hooks.json` or `~/.gemini/config/hooks.json` |
 | Cursor | `$CURSOR_CONFIG_DIR/hooks.json` or `~/.cursor/hooks.json` |
-| Kimi | `$KIMI_SHARE_DIR/config.toml` or `~/.kimi/config.toml` |
+| Kimi | `$KIMI_CODE_HOME/config.toml` or `~/.kimi-code/config.toml` (`KIMI_SHARE_DIR` remains supported for legacy kimi-cli) |
 | Qwen Code | `~/.qwen/settings.json` |
 | Grok Build | `$GROK_HOME/hooks/moshi-hooks.json` or `~/.grok/hooks/moshi-hooks.json` |
 | OMP (Oh My Pi) | `$OMP_CODING_AGENT_DIR/extensions/moshi-hooks.ts`, `$OMP_PROCESSING_AGENT_DIR/extensions/moshi-hooks.ts`, `$PI_CODING_AGENT_DIR/extensions/moshi-hooks.ts`, `$PI_CONFIG_DIR/agent/extensions/moshi-hooks.ts`, `~/.omp/profiles/$OMP_PROFILE/agent/extensions/moshi-hooks.ts`, or `~/.omp/agent/extensions/moshi-hooks.ts` |
@@ -217,7 +218,7 @@ moshi-hook context --et-client-id abcdefghijklmnop
 
 Default `install` skips a managed file when the agent's config root is missing, for example `~/.cursor` or `~/.gemini`. Passing `--target` preserves the old create-if-missing behavior for that target.
 
-Kimi's managed install uses the verified Kimi hook set and does not install `PermissionRequest` by default. The `kimi-hook` dispatcher can still handle `PermissionRequest` if a user adds that event manually.
+Kimi's managed install targets the current Kimi Code lifecycle, including native `PermissionRequest` / `PermissionResult`, interruption, failure, and session-end callbacks. Approval hooks are observation-only: Kimi's terminal prompt remains authoritative while Moshi mirrors and can drive that verified prompt.
 
 ## Tool-event hooks (opt-in)
 
