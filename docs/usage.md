@@ -105,8 +105,8 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `PI_CODING_AGENT_DIR` / `PI_CONFIG_DIR` | Override Pi/OMP agent and config directories; Chat View follows the exact transcript path reported by their installed extensions. |
 | `PI_CODING_AGENT_SESSION_DIR` | Override Pi's session storage directory. |
 | `CURSOR_CONFIG_DIR` | Override Cursor config dir for hook install/status/uninstall. |
-| `KIMI_CODE_HOME` | Override the current Kimi Code data/config directory for hook install/status/uninstall. |
-| `KIMI_SHARE_DIR` | Override the legacy kimi-cli config/share directory when `KIMI_CODE_HOME` is unset. |
+| `KIMI_CODE_HOME` | Override the current Kimi Code data/config directory for hooks, account identity, and usage credentials. |
+| `KIMI_SHARE_DIR` | Override the legacy kimi-cli config/share directory when `KIMI_CODE_HOME` is unset; usage credentials are read from this root too. |
 | `GROK_HOME` | Override Grok Build config dir for hook install/status/uninstall. |
 | `HERMES_HOME` | Override Hermes Agent's config, plugin, and state directory. |
 | `XDG_STATE_HOME` / `XDG_CONFIG_HOME` / `XDG_RUNTIME_DIR` | Standard XDG dirs (Linux). |
@@ -114,6 +114,15 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 Claude profiles seen in hook events are discovered automatically, including
 their exact transcript paths, usage, and account identities. Discovery persists
 across daemon restarts.
+
+Kimi Code usage reads the official CLI credential at
+`$KIMI_CODE_HOME/credentials/kimi-code.json` (default
+`~/.kimi-code/credentials/kimi-code.json`) and fetches the managed account's
+5-hour and weekly quotas from `https://api.kimi.com/coding/v1/usages`. The
+credential remains owned by Kimi Code: `moshi-hook` uses only a fresh access
+token and never uses, refreshes, or rewrites the rotating refresh token.
+Legacy `~/.kimi/credentials/kimi-code.json` is supported as a read-only
+fallback.
 
 ## Subcommands
 
@@ -134,7 +143,7 @@ across daemon restarts.
 | `serve [--gateway-listen 127.0.0.1:24543]` | Run the daemon and localhost diff gateway in the foreground. Single-instance via `flock` on a lockfile next to the socket. |
 | `status [--json]` | Pairing state, paths, hook install state, and best-effort server attachment status for the paired host. |
 | `update [--version vX.Y.Z]` | Update a Linux/manual install from `cdn.getmoshi.app`. Verifies the release checksum before replacing the current binary. Homebrew installs are left untouched; use `brew upgrade moshi-hook`. |
-| `usage [--sync]` | Cached usage snapshots. `--sync` pushes them to the server and reports whether this host is attached to Moshi Pro. |
+| `usage [--sync]` | Cached Codex, Claude, OpenCode, and Kimi snapshots; refreshes missing Claude/Kimi API caches first. `--sync` pushes them to the server and reports whether this host is attached to Moshi Pro. |
 | `cwd-list [--json] [--limit N]` | Recent project working directories from local agent state (Claude, Codex, Cursor). Plain-text table by default; `--json` emits the shape the iOS preflight consumes. |
 | `servers [--ssh-connection \"<value>\"] [--mosh-port <p> [--mosh-host <ip>]] [--et-client-id <id>\|--et]` | Probe local TCP listeners and print HTTP web servers for SSH preflight (filtered to `text/html` responses, tagged with owning process + PID, one-entry-per-PID). With a session lookup, decorates each row with `isCurrentContext`. |
 | `servers kill --pid <pid> --port <port> [--host <host>] [--force=false]` | Terminate a discovered local HTTP server after re-validating that the PID and port still match the server list. |
