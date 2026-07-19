@@ -105,8 +105,8 @@ File-backed storage writes secrets to `~/.config/moshi/secrets.json` with `0600`
 | `PI_CODING_AGENT_DIR` / `PI_CONFIG_DIR` | Override Pi/OMP agent and config directories; Chat View follows the exact transcript path reported by their installed extensions. |
 | `PI_CODING_AGENT_SESSION_DIR` | Override Pi's session storage directory. |
 | `CURSOR_CONFIG_DIR` | Override Cursor config dir for hook install/status/uninstall. |
-| `KIMI_CODE_HOME` | Override the current Kimi Code data/config directory for hooks, account identity, and usage credentials. |
-| `KIMI_SHARE_DIR` | Override the legacy kimi-cli config/share directory when `KIMI_CODE_HOME` is unset; usage credentials are read from this root too. |
+| `KIMI_CODE_HOME` | Override the current Kimi Code data/config directory for hooks, Chat View transcripts, account identity, and usage credentials. |
+| `KIMI_SHARE_DIR` | Override the legacy kimi-cli config/share directory when `KIMI_CODE_HOME` is unset; Chat View and usage credentials read from this root too. |
 | `GROK_HOME` | Override Grok Build config dir for hook install/status/uninstall. |
 | `HERMES_HOME` | Override Hermes Agent's config, plugin, and state directory. |
 | `XDG_STATE_HOME` / `XDG_CONFIG_HOME` / `XDG_RUNTIME_DIR` | Standard XDG dirs (Linux). |
