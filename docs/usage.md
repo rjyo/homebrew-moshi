@@ -27,6 +27,18 @@ tmux new-session -A -s name -c /absolute/path/to/name
 
 Because this uses `exec`, no Moshi wrapper process stays alive after tmux starts.
 
+### Enterprise Linux 10 and tmux 3.3a
+
+RHEL, AlmaLinux, and Rocky Linux 10 may ship a tmux 3.3a build that can abort the entire tmux server in `cmd_capture_pane_exec` under repeated `capture-pane` calls. When that happens, every session and pane owned by that server exits together. Check the active binary with:
+
+```bash
+tmux -V
+```
+
+Moshi uses `capture-pane` for screen-based agent status, approval verification, and paste verification. The hook serializes these reads per tmux server, briefly reuses background status captures, applies command timeouts, and backs off after failures. These measures reduce capture pressure and prevent retry storms, but they cannot protect a tmux build that crashes on a single valid capture.
+
+On affected hosts, upgrade tmux to 3.5a or newer. Replacing the executable does not update an already-running tmux server: preserve or finish important work, then restart the tmux server at a planned time so new sessions use the upgraded binary. If Moshi logs `tmux capture failed; backing off`, inspect the user service logs with `journalctl --user -u moshi-hook` and confirm whether the tmux server exited.
+
 ## Git diff viewer
 
 The `moshi` alias can also open a local browser-based diff viewer for a Git project:
