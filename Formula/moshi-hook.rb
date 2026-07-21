@@ -5,12 +5,12 @@
 class MoshiHook < Formula
   desc "Portable daemon + CLI that bridges AI coding agents to the Moshi mobile app"
   homepage "https://getmoshi.app"
-  version "0.2.55"
+  version "0.2.56"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://cdn.getmoshi.app/hook/v0.2.55/moshi-hook_Darwin_x86_64.tar.gz"
-      sha256 "65d864ef4a4e47461c7c629a5f9109c0e18e54f871933bc9eb847c6edb952358"
+      url "https://cdn.getmoshi.app/hook/v0.2.56/moshi-hook_Darwin_x86_64.tar.gz"
+      sha256 "089fb1a2e58b2625e1ddfcf6fcb9b13e7761e89e9ccd39568a98881919f03f7f"
 
       define_method(:install) do
         bin.install "moshi-hook"
@@ -18,8 +18,8 @@ class MoshiHook < Formula
       end
     end
     if Hardware::CPU.arm?
-      url "https://cdn.getmoshi.app/hook/v0.2.55/moshi-hook_Darwin_arm64.tar.gz"
-      sha256 "bb4a70ff48d0578e2c4c302178a3e0ed3ce722a8bc751b188c6860450b2e4e13"
+      url "https://cdn.getmoshi.app/hook/v0.2.56/moshi-hook_Darwin_arm64.tar.gz"
+      sha256 "dea8299880ffca2595c1ac61c0f0bd2d65461121e5e8580951d22a0622e91007"
 
       define_method(:install) do
         bin.install "moshi-hook"
@@ -30,16 +30,16 @@ class MoshiHook < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://cdn.getmoshi.app/hook/v0.2.55/moshi-hook_Linux_x86_64.tar.gz"
-      sha256 "381ab508dba6e0ea161a2441a1e24f8a4fff974e5c5f48f003117adf306c7008"
+      url "https://cdn.getmoshi.app/hook/v0.2.56/moshi-hook_Linux_x86_64.tar.gz"
+      sha256 "7d355bf18c2e670424c8c2031de21cae0491adbd1b3e390905cd765343b3364c"
       define_method(:install) do
         bin.install "moshi-hook"
         bin.install_symlink "moshi-hook" => "moshi"
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://cdn.getmoshi.app/hook/v0.2.55/moshi-hook_Linux_arm64.tar.gz"
-      sha256 "47520550b9a1f9196954bdb92f33582c09233aa148b1033eb58cd3bfbe9c45b3"
+      url "https://cdn.getmoshi.app/hook/v0.2.56/moshi-hook_Linux_arm64.tar.gz"
+      sha256 "c675370e07421f30d6678ce46a9674ca95c5c1d5e599591574ac37b5dff24f91"
       define_method(:install) do
         bin.install "moshi-hook"
         bin.install_symlink "moshi-hook" => "moshi"
