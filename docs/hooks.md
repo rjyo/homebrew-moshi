@@ -45,7 +45,7 @@ Inbox behavior:
 | Agent stops | Publishes `task_complete` |
 | Session ends or clears | Ignored; the turn result or next prompt carries the visible state |
 | User interrupt | Publishes `task_complete`; if the user immediately gives new instructions, publishes `session_started` again |
-| Agent asks the user a question | Publishes `approval_required`; when answered outside Moshi, follows with a resumed running state |
+| Agent asks the user a question | Publishes `approval_required`; Chat View can submit supported choices through the verified TUI bridge, then follows with a resumed running state |
 
 Claude approvals remain compatible with Claude's own terminal flow. Moshi may
 offer a remote approval experience when the local environment can be verified.

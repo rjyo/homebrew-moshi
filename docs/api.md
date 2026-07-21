@@ -335,6 +335,35 @@ Starts or reuses an embedded diff viewer session for a Git repository.
 
 Diff sessions expire after 15 minutes idle and are served under `/apps/diff/:sessionId/`. Diff payloads are read from the host filesystem and never sent to the Moshi backend.
 
+### `POST /v1/questions/answer`
+
+Submits a complete Chat View answer form to the live Claude Code, Codex, or
+Kimi terminal prompt. The request uses the same SSH/Mosh/ET session query
+parameters as `/events`. The daemon re-resolves the multiplexer pane and checks
+the agent name, agent session id, first question, option labels, and native TUI
+prompt markers before injecting any keys. A changed/stale prompt returns `409`
+without sending input.
+
+```jsonc
+{
+  "source": "claude",
+  "sessionId": "agent-session-id",
+  "toolUseId": "toolu_123",
+  "questions": [
+    { "question": "Choose one?", "options": ["Alpha", "Beta"] },
+    { "question": "Choose colors?", "multiSelect": true, "options": ["Red", "Blue", "Green"] }
+  ],
+  "answers": [
+    { "optionIndexes": [1] },
+    { "optionIndexes": [0, 2] }
+  ]
+}
+```
+
+Option indexes are zero-based. Every question must have at least one selection;
+single-select questions require exactly one. Codex does not support
+multi-select questions.
+
 ### `GET /v1/transcripts?session=<id>[&source=claude|codex|opencode|pi|omp|kimi]`
 
 Opens a local WebSocket stream for a live agent transcript. New clients should pass `source`; when omitted for backward compatibility, the gateway tries Claude first, then Codex. Claude transcripts prefer the exact per-session path captured from hook events (including `CLAUDE_CONFIG_DIR` profiles), then fall back to `~/.claude/projects` for older session state. Codex transcripts are resolved from `$CODEX_HOME/sessions` or `~/.codex/sessions` rollout files. Pi and OMP transcripts use the exact JSONL path reported by the installed extension, so profiles and custom session locations work without a directory scan. OMP validation understands its v3 fixed-width title slot before the session header. Kimi transcripts resolve through its profile-aware `session_index.jsonl` and stream the main agent's live `wire.jsonl`. OpenCode is proxied through the live local server recorded by its plugin. Transcript bytes stay on the host and are streamed only over the local forwarded gateway. If Codex resume creates a newer rollout for the same session id, reconnect to resolve the newest file.
