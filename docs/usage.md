@@ -155,7 +155,7 @@ fallback.
 | `service uninstall` | Linux only: disable the systemd user service and remove the generated unit. |
 | `service status` | Linux only: show `systemctl --user status moshi-hook.service --no-pager`. |
 | `serve [--gateway-listen 127.0.0.1:24543]` | Run the daemon and localhost diff gateway in the foreground. Single-instance via `flock` on a lockfile next to the socket. |
-| `status [--json]` | Pairing state, paths, hook install state, and best-effort server attachment status for the paired host. |
+| `status [--json]` | Pairing state, paths, hook install state, and best-effort server attachment status for the paired host. Human output also asks the running daemon which tmux, Zellij, and Herdr binaries it can resolve; `--json` stays local and omits this diagnostic. |
 | `update [--version vX.Y.Z]` | Update a Linux/manual install from `cdn.getmoshi.app`. Verifies the release checksum before replacing the current binary. Homebrew installs are left untouched; use `brew upgrade moshi-hook`. |
 | `usage [--sync]` | Cached Codex, Claude, OpenCode, and Kimi snapshots; refreshes missing Claude/Kimi API caches first. `--sync` pushes them to the server and reports whether this host is attached to Moshi Pro. |
 | `cwd-list [--json] [--limit N]` | Recent project working directories from local agent state (Claude, Codex, Cursor). Plain-text table by default; `--json` emits the shape the iOS preflight consumes. |
