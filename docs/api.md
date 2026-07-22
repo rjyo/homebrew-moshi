@@ -321,6 +321,38 @@ Gateway HTTP is loopback-only and does not require `Authorization`. Clients reac
 
 The HTTP gateway serves diff and bounded control actions for servers surfaced by discovery. Pull-only host inspection is intentionally not exposed here: `GET /v1/capabilities`, `GET /v1/servers`, and `GET /v1/sessions/context` return `404`. Use the SSH preflight CLI commands below instead.
 
+### `GET /events`
+
+Opens the local WebSocket carrying the current terminal context and discovered
+servers. For a working agent in Herdr, the context may include a replaceable,
+non-persisted terminal preview:
+
+```jsonc
+{
+  "context": {
+    "kind": "herdr",
+    "agent": {
+      "name": "kimi",
+      "status": "working",
+      "session": "agent-session-id",
+      "pane": "w1:p1",
+      "ephemeral": {
+        "type": "working",
+        "lines": [
+          "Reading internal/gateway/events.go…"
+        ]
+      }
+    }
+  }
+}
+```
+
+`ephemeral` is current display state, not a transcript message. Clients replace
+it on each context update and discard it when the agent stops working. The
+gateway reads plain visible terminal text, compares the last ten rows, and
+publishes only the latest changed row. It intentionally omits Herdr's
+`--lines` option so the preview also works with versions before 0.7.5.
+
 ### `POST /v1/diff/start`
 
 Starts or reuses an embedded diff viewer session for a Git repository.
@@ -338,11 +370,11 @@ Diff sessions expire after 15 minutes idle and are served under `/apps/diff/:ses
 ### `POST /v1/questions/answer`
 
 Submits a complete Chat View answer form to the live Claude Code, Codex, or
-Kimi terminal prompt. The request uses the same SSH/Mosh/ET session query
-parameters as `/events`. The daemon re-resolves the multiplexer pane and checks
-the agent name, agent session id, first question, option labels, and native TUI
-prompt markers before injecting any keys. A changed/stale prompt returns `409`
-without sending input.
+Kimi terminal prompt in tmux, Zellij, or Herdr. The request uses the same
+SSH/Mosh/ET session query parameters as `/events`. The daemon re-resolves the
+multiplexer pane and checks the agent name, agent session id, first question,
+option labels, and native TUI prompt markers before injecting any keys. A
+changed/stale prompt returns `409` without sending input.
 
 ```jsonc
 {
@@ -362,7 +394,9 @@ without sending input.
 
 Option indexes are zero-based. Every question must have at least one selection;
 single-select questions require exactly one. Codex does not support
-multi-select questions.
+multi-select questions. Herdr uses the same harness-specific answer sequence;
+the bridge translates it through `herdr pane send-keys` after resolving and
+verifying the focused pane.
 
 ### `GET /v1/transcripts?session=<id>[&source=claude|codex|opencode|pi|omp|kimi]`
 
