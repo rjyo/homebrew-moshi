@@ -350,7 +350,7 @@ non-persisted terminal preview:
 `ephemeral` is current display state, not a transcript message. Clients replace
 it on each context update and discard it when the agent stops working. The
 gateway reads plain visible terminal text, compares the last ten rows, and
-publishes only the latest changed row. It intentionally omits Herdr's
+polls for the latest changed row every 250 ms. It intentionally omits Herdr's
 `--lines` option so the preview also works with versions before 0.7.5.
 
 ### `POST /v1/diff/start`
