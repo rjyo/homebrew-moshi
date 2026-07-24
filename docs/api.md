@@ -353,6 +353,20 @@ gateway reads plain visible terminal text, compares the last ten rows, and
 polls for the latest changed row every 250 ms. It intentionally omits Herdr's
 `--lines` option so the preview also works with versions before 0.7.5.
 
+When a blocked agent is showing a numbered plan-decision menu, `agent` may
+also contain `planMenu`. Its title and option labels are extracted from that
+session's live terminal. They are not inferred from the agent name, account
+tier, or a version profile:
+
+```json
+{
+  "planMenu": {
+    "title": "Implement this plan?",
+    "options": ["Approve", "Keep planning"]
+  }
+}
+```
+
 ### `POST /v1/diff/start`
 
 Starts or reuses an embedded diff viewer session for a Git repository.
@@ -369,12 +383,12 @@ Diff sessions expire after 15 minutes idle and are served under `/apps/diff/:ses
 
 ### `POST /v1/questions/answer`
 
-Submits a complete Chat View answer form to the live Claude Code, Codex, or
-Kimi terminal prompt in tmux, Zellij, or Herdr. The request uses the same
-SSH/Mosh/ET session query parameters as `/events`. The daemon re-resolves the
-multiplexer pane and checks the agent name, agent session id, first question,
-option labels, and native TUI prompt markers before injecting any keys. A
-changed/stale prompt returns `409` without sending input.
+Submits a complete Chat View answer form to the live Claude Code, Codex, Kimi,
+Pi, OMP, or OpenCode terminal prompt in tmux, Zellij, or Herdr. The request
+uses the same SSH/Mosh/ET session query parameters as `/events`. The daemon
+re-resolves the multiplexer pane and checks the agent name, agent session id,
+first question, option labels, and native TUI prompt markers before injecting
+any keys. A changed/stale prompt returns `409` without sending input.
 
 ```jsonc
 {
@@ -397,6 +411,39 @@ single-select questions require exactly one. Codex does not support
 multi-select questions. Herdr uses the same harness-specific answer sequence;
 the bridge translates it through `herdr pane send-keys` after resolving and
 verifying the focused pane.
+
+### `POST /v1/plans/answer`
+
+Selects one option from a live ExitPlanMode / plan-review menu through the
+same verified TUI bridge. It supports every Chat View transcript source:
+Claude Code, Codex, Kimi, Pi, OMP, and OpenCode. The app sends the complete
+visible menu and the plan markdown, not a raw key. The daemon verifies the
+agent session, menu title, every numbered option label, and a visible
+fingerprint from the plan before it selects anything.
+
+```jsonc
+{
+  "source": "codex",
+  "sessionId": "agent-session-id",
+  "toolUseId": "plan-call-id",
+  "prompt": {
+    "title": "Implement this plan?",
+    "plan": "# Plan\n\n1. Add the endpoint.\n2. Cover it end to end.",
+    "options": [
+      "Yes, implement this plan",
+      "Yes, clear context and implement",
+      "No, stay in Plan mode"
+    ],
+    "optionIndex": 0
+  }
+}
+```
+
+`optionIndex` is zero-based. Claude, Codex, Kimi, and OpenCode menus use their
+numbered choice bindings. Pi and OMP use the native arrow-and-confirm
+sequence, paced as separate terminal events so redraws cannot swallow input.
+A stale plan, changed menu, or different agent session returns `409`; an
+unavailable pane also fails without sending a partial decision.
 
 ### `GET /v1/transcripts?session=<id>[&source=claude|codex|opencode|pi|omp|kimi]`
 
