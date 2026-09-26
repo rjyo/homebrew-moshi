@@ -511,7 +511,9 @@ selection (Herdr by default); `context: true` enables loopback context pushes.
 
 The gateway acks with `{"watching": {"workspaces": true, "agent": true, "context": true, "usage": true}}`
 and then pushes frames whenever their content changes (workspaces and context
-on a 1 s tick, agent status on a 250 ms tick, all deduped by JSON):
+on a tick, agent status on a 250 ms tick, all deduped by JSON). The workspace
+tree rebuilds every 5 s at rest and every 1 s for 3 s after any hook event,
+which also wakes the agent watch:
 
 ```jsonc
 // the loopback mux tree, same shape as GET /v1/workspaces
@@ -531,6 +533,7 @@ on a 1 s tick, agent status on a 250 ms tick, all deduped by JSON):
 { "agentStatus": {
     "source": "claude", "session": "agent-session-id",
     "status": "working", "modelName": "fable-5",
+    "statusChangedAt": 1787219601.2,     // when "status" began; see /v1/workspaces
     "title": "Fix login redirect loop",  // conversation title, see /v1/workspaces
     "contextRemaining": 42,  // % of context window left, 1..100; omitted = unknown
     "commands": [
@@ -1009,6 +1012,7 @@ exists (or the pinned herdr session is not running); `400` on a malformed
       "model": "fable-5",                        // display label; omitted when unknown
       "contextRemaining": 42,                     // 1..100; omitted when unknown
       "cwd": "/Users/me/projects/app-moshi",
+      "statusChangedAt": 1787219601.2,           // when agentStatus began (Unix s)
       "paneCount": 1, "stateChangeOrder": 18
     }, {
       "id": "wB:t2", "label": "2", "focused": false,
@@ -1034,6 +1038,34 @@ topology from `workspace.list`, per-workspace `tab.list`, `pane.list`, and
 `agent.list`, so Herdr releases before 0.9.0 keep working; such trees advertise
 `"paneFocus": "agent-only"`. Separate foreground-process verification remains
 necessary because neither path contains process details.
+
+`statusChangedAt` is when the node's current `agentStatus` began, in Unix
+seconds with millisecond precision. Use it to show "working for 3m" or
+"finished 5m ago", and to sort agents by recency; unlike `stateChangeOrder`
+(herdr only, resets with the herdr server) it exists on both muxes, is
+comparable across hosts, and survives restarts wherever hooks are installed.
+It is present on agent panes, tabs/windows, groups, the `agentStatus` watch
+frame, and `context.agent`. Neither mux exposes transition times, so the
+daemon derives it:
+
+- **Hook time** when the session's hook state explains the shown status: the
+  prompt-submit stamp for `working`, the turn-stop stamp for `idle`/`done`,
+  the permission/question stamp for `blocked`. Exact, and stable across
+  daemon restarts.
+- **Observed time** otherwise (agents without hooks, a status only the screen
+  shows, a turn that resumed after a permission wait): when the daemon first
+  saw the status, or — herdr — a new `stateChangeOrder`. Accurate to the
+  sampling cadence (250 ms for a watched agent, 1–5 s for the tree).
+- `statusChangedAtApprox: true` marks an observed time from the first sighting
+  (typically after a daemon restart): the status began *at or before* it, so
+  render it as "≥ 5m" rather than an exact age.
+
+`done` and `idle` share one clock (visiting a done tab does not reset it). A
+tab/window takes the newest time among its agent panes that show the tab's
+status; a group the newest among children showing its status, or among all
+timed children when the mux reports no group status (tmux). Shell panes and
+tabs without an agent carry no time. A suggested sort is attention first
+(`blocked`, then `done`), then `statusChangedAt` descending.
 
 `command` marks a terminal that has something running: the base name of the
 foreground process of a shell (non-agent) tab or pane — `node`, `vim`, `go` —
