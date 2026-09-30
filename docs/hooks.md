@@ -81,6 +81,7 @@ interruptions, input requests, and completion fallback when no hook arrives.
 | Session created or marked busy | Publishes `session_started` |
 | Session becomes idle | Publishes `task_complete` |
 | Permission request | Publishes `approval_required` |
+| Question (V1 `question.asked`, V2 form) | Publishes `approval_required` with "Answer in terminal" |
 | Tool activity | Publishes tool progress |
 
 Streaming messages, file events, LSP events, TUI events, and miscellaneous
@@ -115,9 +116,11 @@ hook waits on its ack, so waiting for the panel before acking would deadlock
 against the very prompt being waited for. The same log makes a session report
 `blocked` while the panel is up, without scraping the pane.
 
-Grok's first permission option enables always-approve mode. Moshi never sends
-that shortcut: remote approve selects option 2 (`Yes, proceed`), while deny
-selects option 3.
+Grok's first permission option enables always-approve mode, and its edit and
+scoped-command panels add "allow all edits", "Always allow" and "Never allow"
+rules around the one-time choices. Moshi never sends those: remote approve
+selects the one-time option (`Yes, proceed`, or `Yes` on the edit panel) and
+deny selects `No, reject`, reading the digits off the panel on screen.
 
 ### OMP (Oh My Pi)
 
@@ -151,6 +154,62 @@ directory:
 | Permission request | Publishes `approval_required`; a terminal answer follows with `Pi resumed` |
 | Session shuts down | Publishes `session_ended` |
 | Tool activity | Not installed by default; Pi tool hooks are synchronous and should stay opt-in |
+
+### OmO
+
+OmO (oh-my-openagent's standalone `omo` CLI) runs on senpi, a Pi fork, and
+loads the same kind of TypeScript extension from its own agent directory.
+Moshi installs a global extension there with Pi's lifecycle coverage. Senpi
+prompts for permissions only when a permission preset asks it to; those
+prompts arrive on its event bus and are mirrored as answer-in-terminal rows.
+
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| Session loads | Stored silently until the first prompt |
+| User submits a prompt | Publishes or updates `session_started` |
+| Agent fully settles | Publishes `task_complete` |
+| Permission prompt | Publishes `approval_required` with "Answer in terminal"; the answer follows with `OmO resumed` |
+| Session shuts down (`/new`, `/resume`, exit) | Publishes `session_ended` |
+| Conversation | Chat View from its session file |
+
+### jcode
+
+jcode runs lifecycle hooks from its `[hooks]` config table. Moshi adds its
+command to `session_start`, `turn_start`, `turn_end`, and `session_end`,
+keeping any commands you already configured for those events. jcode has no
+interactive approval or question prompt, so none is surfaced. Its hooks run
+from jcode's shared background server, so Moshi only follows sessions a
+terminal client is driving; swarm workers and ambient runs stay out of the
+inbox.
+
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| Session starts, attaches or resumes | Stored silently until the first prompt |
+| A turn starts | Publishes or updates `session_started` with the prompt |
+| A turn ends (including Esc) | Publishes `task_complete` with the final reply, or the error |
+| Esc during a tool call (jcode aborts the turn without its hook) | Publishes `task_complete` titled `jcode interrupted` from jcode's own log |
+| `/clear` or client exit | Publishes `session_ended` |
+| Conversation | Chat View from its saved session |
+
+### Goose
+
+Goose runs Open Plugins hooks. Moshi installs a `moshi-hooks` plugin in
+Goose's user plugin directory for the session, prompt and stop events, and
+sets Goose's status hook so it can tell when the CLI is back at its prompt.
+If you already use your own status hook, Moshi leaves it in place; turns you
+interrupt then stay working until the next prompt, and a `/new` session is
+picked up on its first prompt. Goose has no hook for its tool approval prompt,
+so approvals are not surfaced.
+
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| Session starts | Stored silently until the first prompt |
+| User submits a prompt | Publishes or updates `session_started` |
+| Turn finishes | Publishes `task_complete` with the final reply |
+| Ctrl-C during a turn | Publishes `task_complete` titled `goose interrupted` |
+| `/new` | Ends the old session and follows the new one right away |
+| Session exits | Publishes `session_ended` |
+| Conversation | Chat View from Goose's session store |
 
 ### Hermes Agent
 
@@ -213,6 +272,95 @@ hundred allowlisted commands therefore produces no notifications. Cursor `--forc
 actions stay local for the same reason: Run Everything has already removed the
 human decision. Reasoning traces, editor-internal events, file watchers, and
 streaming partials are not surfaced.
+
+### Qoder CLI
+
+Qoder CLI copies Claude Code's hook protocol, so Moshi installs the same event
+set into `~/.qoder/settings.json` (or `$QODER_CONFIG_DIR/settings.json`).
+Chat View reads Qoder's Claude-format JSONL from the exact path its hooks
+report.
+
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| User submits a prompt | Publishes or updates `session_started` |
+| Permission request | Publishes `approval_required`; a remote allow or deny answers Qoder |
+| Permission answered in the terminal | The remote request closes as "Answered in terminal" when the turn ends |
+| `AskUserQuestion` | Captures the form; Chat View answers it through the pane |
+| Agent stops | Publishes `task_complete` with the final reply |
+| Subagent lifecycle (payload carries `agent_id`) | Not surfaced |
+
+Qoder runs no hooks at all in a folder it has not been told to trust, and a
+prompt passed on the command line skips its trust dialog. Trust the folder once
+(start `qodercli` without a prompt) or Moshi sees nothing from that project.
+
+Qoder shows its own prompt while the permission hook waits and does not cancel
+the hook when the terminal answer wins, so Moshi retires that request on the
+session's next turn event.
+
+### Devin CLI
+
+Devin reads Claude-shaped hook groups from the `hooks` key of
+`~/.config/devin/config.json`. Its matchers are regexes, so lifecycle entries
+omit them (Devin treats an omitted matcher as "all") and the question hooks
+name `ask_user_question` literally. Devin has no `cwd` in its payloads; Moshi
+uses `DEVIN_PROJECT_DIR` to bind the terminal pane.
+
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| User submits a prompt | Publishes or updates `session_started` |
+| Permission request | Publishes `approval_required`; Devin waits for the hook, so the remote allow or deny answers it (`{"decision":"approve"\|"block"}`) |
+| `ask_user_question` | Captures the form and publishes `approval_required`; Chat View answers a single question through the pane |
+| Agent stops | Publishes `task_complete` |
+
+Chat View reads Devin's per-session ATIF document
+(`~/.local/share/devin/cli/transcripts/<id>.json`), converted into
+Claude-shaped rows by the gateway.
+
+Devin also loads `~/.claude` hooks by default (`read_config_from.claude`).
+Moshi's Claude hook stays inert whenever `DEVIN_PROJECT_DIR` is set, so those
+imported copies never surface Devin turns as Claude sessions.
+
+### Amp
+
+Amp has no shell hooks. Moshi installs a Bun plugin at
+`~/.config/amp/plugins/moshi-hooks.ts` that forwards `agent.start` and
+`agent.end` (with the final assistant text) to `moshi-hook amp-hook`. Plugins
+cannot see Amp's own approval prompt, so approvals are not surfaced.
+
+Amp keeps threads on its servers, so Chat View runs `amp threads export` while
+a Chat View stream is open. The plugin touches a per-thread marker on every
+turn and tool result; the gateway re-exports only when that marker moves (or
+every 30s), and viewers of one thread share a single cached export.
+
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| User submits a prompt | Publishes or updates `session_started` |
+| Agent finishes the turn | Publishes `task_complete` with the final reply |
+| Tool approval | Not surfaced |
+| Conversation | Chat View via `amp threads export`, refreshed on Amp activity |
+
+### Factory Droid and GitHub Copilot CLI
+
+Neither exposes a hook that can answer an approval before its own policy
+runs, so approvals stay in the terminal. Copilot also gets Chat View: the
+gateway rewrites its `events.jsonl` conversation into Claude-shaped rows.
+Droid's session JSONL already uses Claude content blocks, so Chat View unwraps
+it and hides TUI-only rows (hook status lines, plan notices).
+
+| Agent behavior | Moshi behavior |
+| --- | --- |
+| User submits a prompt | Publishes or updates `session_started` |
+| Waiting on a permission prompt or question (`Notification`) | Publishes `approval_required` with "Answer in terminal" |
+| A tool runs after the prompt | Clears the waiting state without publishing |
+| Agent stops | Publishes `task_complete` |
+
+Droid hooks live in `~/.factory/hooks.json`. Because Droid lets that file
+replace `settings.json` hooks event by event, install first copies any
+`settings.json` hooks for the events Moshi adds. Droid subagents (run with
+`DROID_PARENT_SESSION_ID`) are not surfaced. Copilot hooks live in a
+Moshi-owned `~/.copilot/hooks/moshi-hooks.json`; Moshi does not install
+Copilot's `permissionRequest`, which fires before Copilot's own allow/deny
+policy and so cannot tell a real prompt from an auto-approved tool.
 
 ---
 

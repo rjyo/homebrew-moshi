@@ -17,7 +17,7 @@ The PowerShell installer verifies the published ZIP checksum, installs without
 elevation into versioned per-user directories, and places a stable junction on
 the user `PATH`. See [windows.md](windows.md) for the beta support boundary.
 
-After step 2, supported agents route their hooks through `moshi-hook`: Claude Code, Codex, OpenCode, Gemini CLI, Antigravity, Cursor, Kimi, Qwen Code, Grok Build, OMP (Oh My Pi), Pi, and Hermes Agent. The daemon (`serve`) holds the WebSocket to Moshi and the local Unix socket that hooks talk to.
+After step 2, supported agents route their hooks through `moshi-hook`: Claude Code, Codex, OpenCode, Gemini CLI, Antigravity, Cursor, Kimi, Qwen Code, Qoder CLI, Factory Droid, GitHub Copilot CLI, Amp, Devin CLI, Grok Build, OMP (Oh My Pi), Pi, and Hermes Agent. The daemon (`serve`) holds the WebSocket to Moshi and the local Unix socket that hooks talk to.
 
 ## Local web client
 
@@ -192,16 +192,17 @@ never uses, refreshes, or rewrites the refresh token.
 | `host revoke <id>` | Remove a Moshi host SSH key from `authorized_keys`. |
 | `host enable-ssh` | Help enable SSH prerequisites on macOS. |
 | `diff [path] [--no-open] [--port N]` | Serve the embedded Git diff viewer for a local project directory. |
-| `install` | Write Moshi entries into supported agent config files. By default, only installs targets whose config root already exists and reports missing agents as skipped. Use `--target claude,codex,opencode,gemini,antigravity,cursor,kimi,qwen,grok,omp,pi,hermes` to force or limit the set. Non-destructive: leaves user-owned hooks alone. OpenCode installs globally by default; use `--local` for `.opencode/plugins` in the current project. |
+| `install` | Write Moshi entries into supported agent config files. By default, only installs targets whose config root already exists and reports missing agents as skipped. Use `--target claude,codex,opencode,gemini,antigravity,cursor,kimi,qwen,qoder,droid,copilot,amp,devin,grok,omp,pi,omo,jcode,goose,hermes` to force or limit the set. Non-destructive: leaves user-owned hooks alone. OpenCode installs globally by default; use `--local` for `.opencode/plugins` in the current project. When Codex 0.157+ is installed with its shared background server on, `install` asks whether to turn it off (non-interactive runs print a pointer to `doctor`). |
 | `uninstall` | Remove Moshi-owned entries from those files. For OpenCode, pass `--local` to remove a project-local install. |
 | `service install` | Linux: install and start a systemd user service. Windows groundwork: register current-user logon startup under `HKCU\...\Run` and start a detached daemon without elevation. |
 | `service uninstall` | Disable/remove the Linux systemd service or Windows logon value and stop the daemon. |
 | `service status` | Show systemd status on Linux or the Windows logon registration. |
 | `serve [--gateway-listen 127.0.0.1:24543]` | Run the daemon and localhost API/diff gateway in the foreground. Does not serve the general web UI. Single-instance via an OS file lock under the state directory. |
-| `status [--json]` | Pairing state, paths, hook install state, and best-effort server attachment status for the paired host. Human output also asks the running daemon which tmux, Zellij, and Herdr binaries it can resolve; `--json` stays local and omits this diagnostic. |
+| `status [--json]` | Pairing state, paths, and best-effort server attachment status for the paired host. `--json` also carries hook install state and stays local (no server round-trip). For hooks, multiplexers, and Chat View readiness, run `doctor`. |
+| `doctor [--yes] [--json]` | Check which Moshi features work on this host and what each one is missing: agent inbox and alerts, Chat View, Workspaces and Jump To, the session picker, the diff viewer, Browser/Simulator preview, and usage. It checks the daemon and its gateway (including a version mismatch with the installed CLI), pairing (confirmed with Moshi), agent hooks, settings that turn a feature off, and tmux/herdr — including duplicate installs where the copy the app's session picker or the daemon would run differs from the one running your server, tmux older than 2.6 (Moshi needs `select-pane -T` and `send-keys -X`), the EL10 tmux 3.3a capture bug, and herdr older than 0.9 (slower fallback). Prints numbered fixes and a checklist of things only you can confirm (phone notifications, Live Activity, connecting from the app, starting agents in tmux/herdr, restarting agents after hook changes). When Codex 0.157+ runs its shared background server, `doctor` offers to turn it off (`--yes` applies without asking); see [Codex background server](#codex-background-server). `--json` prints the same report as one object (feature verdicts, checks, numbered fixes) and never prompts; the running daemon also runs these checks at start, after hook installs, when the Moshi app connects to a report older than 30 minutes, and when the app's hooks sheet asks for a re-check (keeping pairing local), and pushes the report to the app over the gateway's `/events` socket. |
 | `update [--version vX.Y.Z]` | Update a Linux or Windows manual install from `cdn.getmoshi.app`. Verifies the release checksum before replacing the current binary. Windows uses ZIP assets and can rotate the currently running `.exe`. Homebrew installs are left untouched; use `brew upgrade moshi-hook`. |
 | `usage [--sync]` | Cached Codex, Claude, OpenCode, Kimi, Grok, and Antigravity snapshots; refreshes missing Claude profiles and missing/stale Codex, Kimi, Grok, and Antigravity API caches first (including OpenCode-only Codex with no rollouts). `--sync` pushes them to the server and reports whether this host is attached to Moshi Pro. On-demand: works even when background collection is off (`set usage-collection off`). JSON output also carries a local `cost` rollup per account — tokens burned today and over the last 7 days, split by model, with an estimated cost at public API list rates (not what a plan charged). Scanning is incremental and capped per refresh, so a large history fills in over several background passes; unpriced models report tokens with `pricingComplete: false` and no dollar figure. `--sync` does not upload it. |
-| `set [setting] [value]` | Show or change settings in `~/.config/moshi/config.toml`. `usage-collection` accepts `on`, `off`, or a polling interval such as `5m`; `on` restores the previously chosen interval (default `1m`). `scan-ports 3000,5173` restricts Browser Preview HTTP probes to those ports and accepts inclusive ranges (`scan-ports 3000,8000-8010`), which is also how you keep other local services out; `scan-ports all` restores the default scan-all behavior and `scan-ports none` disables HTTP probing. Scan-port changes apply on the next discovery refresh; restart the daemon after changing background settings: `always-on-discovery`, `usage-collection`, `suppress-nested-agent-push`, or `suppress-push-while-unlocked`. `install.sh` runs `moshi-hook set --first-run` at the end (both onboarding options checked/on; opens `/dev/tty` under `curl\|sh`). Skip with `MOSHI_HOOK_SKIP_FIRST_RUN=1`. Homebrew does not run that step — defaults stay on until `host setup` / `serve` / `pair` / `install` (interactive) or an explicit `set --first-run`. Machine-readable commands (`status --json`, etc.) never auto-prompt. |
+| `set [setting] [value]` | Show or change settings in `~/.config/moshi/config.toml`. `usage-collection` accepts `on`, `off`, or a polling interval such as `5m`; `on` restores the previously chosen interval (default `1m`). `scan-ports 3000,5173` restricts Browser Preview HTTP probes to those ports and accepts inclusive ranges (`scan-ports 3000,8000-8010`), which is also how you keep other local services out; `scan-ports all` restores the default scan-all behavior and `scan-ports none` disables HTTP probing. Scan-port changes apply on the next discovery refresh; `tmux-sockets ~/.tmux/agents.sock,/tmp/b.sock` adds tmux servers started with `-S` to the mux picker (servers started with `-L <name>` are found automatically; `none` clears the list), applying the next time the app reads the mux list; `auto-update ask|auto|off` controls new releases: the daemon checks every 6 hours; `ask` (default) reports a new release — a silent push flags the host in the Moshi app, whose hooks sheet can then check again or update with one tap — `auto` installs it (through `brew upgrade` for Homebrew installs) and restarts the daemon in place once no approval is pending, and `off` skips the check. It applies at the next check without a restart; `git-background-fetch on` (off by default) periodically fetches the upstream of repos shown in the app so behind counts stay fresh, which can trigger SSH-agent or credential prompts; it applies within five minutes without a restart. Restart the daemon after changing the other background settings: `always-on-discovery`, `usage-collection`, `suppress-nested-agent-push`, or `suppress-push-while-unlocked`. `install.sh` runs `moshi-hook set --first-run` at the end (both onboarding options checked/on; opens `/dev/tty` under `curl\|sh`). Skip with `MOSHI_HOOK_SKIP_FIRST_RUN=1`. Homebrew does not run that step — defaults stay on until `host setup` / `serve` / `pair` / `install` (interactive) or an explicit `set --first-run`. Machine-readable commands (`status --json`, etc.) never auto-prompt. |
 | `cwd-list [--json] [--limit N]` | Recent project working directories from local agent state (Claude, Codex, Cursor). Plain-text table by default; `--json` emits the shape the iOS preflight consumes. |
 | `servers [--ssh-connection \"<value>\"] [--mosh-port <p> [--mosh-host <ip>]] [--et-client-id <id>\|--et]` | Probe local TCP listeners and print HTTP web servers for SSH preflight (filtered to `text/html` responses, tagged with owning process + PID, one-entry-per-PID). With a session lookup, decorates each row with `isCurrentContext`. |
 | `servers kill --pid <pid> --port <port> [--host <host>] [--force=false]` | Terminate a discovered local HTTP server after re-validating that the PID and port still match the server list. |
@@ -209,7 +210,7 @@ never uses, refreshes, or rewrites the refresh token.
 | `logs [-f]` | Tail the daemon log. |
 | `version` | Version, commit SHA, build date. |
 
-Hidden subcommands (`claude-hook`, `codex-hook`, `opencode-event`, `opencode-permission`, `gemini-hook`, `antigravity-hook`, `cursor-hook`, `kimi-hook`, `qwen-hook`, `grok-hook`, `omp-hook`, `pi-hook`, `hermes-hook`) are invoked by the agents themselves through the configs `install` writes — you won't run them by hand.
+Hidden subcommands (`claude-hook`, `codex-hook`, `opencode-event`, `opencode-permission`, `gemini-hook`, `antigravity-hook`, `cursor-hook`, `kimi-hook`, `qwen-hook`, `qoder-hook`, `droid-hook`, `copilot-hook`, `amp-hook`, `devin-hook`, `grok-hook`, `omp-hook`, `pi-hook`, `omo-hook`, `jcode-hook`, `goose-hook`, `hermes-hook`) are invoked by the agents themselves through the configs `install` writes — you won't run them by hand.
 
 ### `cwd-list` — recent project directories
 
@@ -278,12 +279,34 @@ moshi-hook context --et-client-id abcdefghijklmnop
 | Cursor | `$CURSOR_CONFIG_DIR/hooks.json` or `~/.cursor/hooks.json` |
 | Kimi | `$KIMI_CODE_HOME/config.toml` or `~/.kimi-code/config.toml` (`KIMI_SHARE_DIR` remains supported for legacy kimi-cli) |
 | Qwen Code | `~/.qwen/settings.json` |
+| Qoder CLI | `~/.qoder/settings.json` (or `$QODER_CONFIG_DIR/settings.json`) |
+| Factory Droid | `~/.factory/hooks.json` (the legacy `~/.factory/hooks/hooks.json` while only it exists) |
+| GitHub Copilot CLI | `~/.copilot/hooks/moshi-hooks.json` (or `$COPILOT_HOME/hooks/`) |
+| Amp | `~/.config/amp/plugins/moshi-hooks.ts` (or `$XDG_CONFIG_HOME/amp/plugins/`) |
+| Devin CLI | `~/.config/devin/config.json` (`hooks` key) |
 | Grok Build | `$GROK_HOME/hooks/moshi-hooks.json` or `~/.grok/hooks/moshi-hooks.json` |
 | OMP (Oh My Pi) | `$OMP_CODING_AGENT_DIR/extensions/moshi-hooks.ts`, `$OMP_PROCESSING_AGENT_DIR/extensions/moshi-hooks.ts`, `$PI_CODING_AGENT_DIR/extensions/moshi-hooks.ts`, `$PI_CONFIG_DIR/agent/extensions/moshi-hooks.ts`, `~/.omp/profiles/$OMP_PROFILE/agent/extensions/moshi-hooks.ts`, or `~/.omp/agent/extensions/moshi-hooks.ts` |
 | Pi | `$PI_CODING_AGENT_DIR/extensions/moshi-hooks.ts`, `$PI_CONFIG_DIR/agent/extensions/moshi-hooks.ts`, or `~/.pi/agent/extensions/moshi-hooks.ts` |
+| OmO | `$OMO_CODING_AGENT_DIR/extensions/moshi-hooks.ts`, `$SENPI_CODING_AGENT_DIR/extensions/moshi-hooks.ts`, or `~/.omo/agent/extensions/moshi-hooks.ts` |
+| jcode | `$JCODE_HOME/config.toml` or `~/.jcode/config.toml` (managed block inside `[hooks]`; your own hook commands are kept) |
+| Goose | `$GOOSE_PATH_ROOT/.agents/plugins/moshi-hooks/` or `~/.agents/plugins/moshi-hooks/` (`plugin.json`, `hooks/hooks.json`), plus `GOOSE_STATUS_HOOK` in Goose's `config.yaml` when you have not set your own |
 | Hermes Agent | `$HERMES_HOME/plugins/moshi-hooks/{plugin.yaml,__init__.py}` or `~/.hermes/plugins/moshi-hooks/...`; installer also enables `moshi-hooks` in the matching `config.yaml` |
 
 Default `install` skips a managed file when the agent's config root is missing, for example `~/.cursor` or `~/.gemini`. Passing `--target` preserves the old create-if-missing behavior for that target.
+
+### Codex background server
+
+Codex 0.157 and later start interactive sessions inside one shared background server (`codex app-server --managed-daemon`, controlled by `features.daemon_auto_start`, on by default). That server runs the hooks and holds every session's transcript, and it keeps the environment of whichever terminal started it. Moshi then attributes every Codex session to that first terminal, so Chat View, replies, and approvals follow the wrong pane.
+
+`moshi-hook install` and `moshi-hook doctor` detect this and, after asking, set `daemon_auto_start = false` under `[features]` in `$CODEX_HOME/config.toml` and stop the running server along with its updater. Codex sessions that were attached to it disconnect; restart them. Turning the feature off alone is not enough while a server is still running, because new Codex sessions keep attaching to it. `moshi-hook uninstall` leaves the setting in place.
+
+To do the same by hand:
+
+```sh
+codex features disable daemon_auto_start
+codex app-server daemon stop
+pkill -f 'app-server daemon pid-update-loop'   # `daemon stop` leaves the updater running
+```
 
 ### Repairing the OpenCode integration
 
@@ -298,11 +321,18 @@ custom plugins in separate files. The existing Integrations install action also
 rewrites the host's global plugin.
 
 The generated plugin has separate V1 `server` and V2 `setup` entrypoints, so
-OpenCode 2.x does not need a manually edited plugin. With OpenCode 2.x, launch
-`opencode --standalone` for pane-bound Chat View and Stop: the default shared
-background service does not carry the current terminal's identity. The V2
-transcript relay reads OpenCode's public `session.context` API; history removed
-from that context by compaction is not available through this API.
+OpenCode 2.x does not need a manually edited plugin. OpenCode 2.x runs sessions
+in one shared background service (`opencode serve --service`) that carries the
+environment of whichever terminal started it, so the install also writes a TUI
+plugin beside it (`plugins/moshi-hooks-tui/tui.js`). It runs inside each
+OpenCode TUI and tells Moshi which session that pane is showing; the default
+shared service and `opencode --standalone` both work with Chat View and Stop.
+The pane follows the TUI that opened a session most recently; a TUI on its
+home screen (after `/new`) holds no session until its first prompt. After
+upgrading moshi-hook, run the install again and restart OpenCode (including
+`opencode service restart`) so both halves reload. The V2 transcript relay
+reads OpenCode's public `session.context` API; history removed from that
+context by compaction is not available through this API.
 
 Hermes Agent keeps its conversation history in `$HERMES_HOME/state.db` rather than in per-session transcript files. Chat View reads that database through Moshi's bundled read-only SQLite driver; no separate `sqlite3` command is required.
 

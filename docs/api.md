@@ -128,6 +128,7 @@ Every frame uses the same shape. Fields are optional, interpreted per `type`. Un
   "tmuxSession": "main",                 // present when terminalKind is "tmux"
   "tmuxWindow": "0",
   "tmuxPane": "%7",
+  "tmuxSocket": "/private/tmp/tmux-501/default", // server socket; forwarded in pushes
   "toolName": "Bash",
   "modelName": "claude-opus-4-7",
   "contextPercent": 42,                  // 0..100, 0 = unknown
@@ -154,6 +155,7 @@ Every frame uses the same shape. Fields are optional, interpreted per `type`. Un
 | Hook → daemon | `approval.request` | Block until daemon returns a decision. Used by blocking approval adapters. |
 | Hook → daemon | `session.update` | Notify daemon of session state change. Claude/Codex/Hermes terminal approvals use this with `category:"approval_required"` and, when a terminal target is available, `actionId` + `phase:"waitingForApproval"`. |
 | Hook → daemon | `session.closed` | Session ended. |
+| Hook → daemon | `session.bind` | The terminal pane in the envelope now shows `sessionId` (OpenCode 2 TUI plugin; `agentPid` is the TUI process). The daemon moves that pane off every other session without ending them; an empty `sessionId` only releases the pane. Never published as a push. |
 | Daemon → hook | `approval.response` | Decision for prior `approval.request` (matched by `actionId`). |
 | Daemon → hook | `ack` | Ack of a fire-and-forget message. |
 | Daemon → hook | `error` | Protocol/transport error. |
@@ -383,6 +385,14 @@ suppress_nested_agent_push = false
 # read, the push is sent.
 #   moshi-hook set suppress-push-while-unlocked on
 suppress_push_while_unlocked = false
+# Periodically `git fetch` the upstream branch of repos shown in workspace
+# summaries and diff sessions, so "behind" counts include commits pushed
+# elsewhere. Off by default: fetching uses your git credentials, and an SSH
+# agent (1Password, Secretive) or Keychain may ask for approval each time.
+# A repo whose fetch fails is not retried until the daemon restarts. With it
+# off, behind counts are as of your own last fetch.
+#   moshi-hook set git-background-fetch on
+git_background_fetch = false
 # Optional HTTP probe allowlist for Browser Preview discovery. Omit it (or use
 # "all") to scan every eligible loopback listener. An empty array disables
 # HTTP probing entirely. Entries are single ports or inclusive "lo-hi" ranges,
@@ -391,6 +401,12 @@ suppress_push_while_unlocked = false
 #   moshi-hook set scan-ports 3000,8000-8010
 #   moshi-hook set scan-ports none
 scan_ports = "all"
+# Extra tmux servers to offer in the mux picker, as `tmux -S` socket paths.
+# Servers in tmux's own socket directory (every `tmux -L <name>`) are found
+# without this; only sockets kept elsewhere need listing.
+#   moshi-hook set tmux-sockets ~/.tmux/agents.sock
+#   moshi-hook set tmux-sockets none
+tmux_sockets = []
 ```
 
 4. Default `127.0.0.1:24543`
@@ -406,6 +422,7 @@ See `docs/design/client-mode.md` for the full design. Bare `moshi` serves the em
 - The built app-moshi assets (populate with `scripts/build-webapp.sh`) are served by the foreground web listener on `127.0.0.1:24544`; extensionless paths fall back to the SPA shell. `/gateway/*`, `/events`, `/hosts/*`, `/v1/*`, and `/apps/*` proxy to the daemon at `127.0.0.1:24543`, preserving same-origin HTTP and WebSocket behavior. Ctrl-C stops the web listener without stopping agent hooks.
 - `/hosts/<name>/<rest>` reverse-proxies `<rest>` (HTTP and WebSocket) to `127.0.0.1:24543` on `<name>` via `ssh -W` with `ControlMaster` reuse. `<name>` is any syntactically safe ssh destination (optional `user@` + hostname — config aliases and MagicDNS names alike; the daemon reads no ssh config of its own, clients remember their own host lists); unsafe names are `404`, ssh failures are `502` with the last ssh stderr line included (e.g. `Permission denied (publickey)`). BatchMode is forced: hosts needing interactive auth (passwords, locked agents like 1Password) fail fast — verify with plain `ssh <name>` first.
 - `GET /v1/pty?mux=herdr&hideSidebar=true` sets `[ui] sidebar_collapsed_mode = "hidden"` in the host’s shared Herdr config and reloads the selected session before attaching; `false` sets `"compact"`. This affects other clients using that config and only changes the collapsed rail: collapse the sidebar in Herdr to hide it. Omit the parameter to leave configuration untouched. Requires Bash, Perl, and a Herdr version supporting `sidebar_collapsed_mode` (no `--hide-sidebar` flag). Respects `HERDR_CONFIG_PATH` and `XDG_CONFIG_HOME`; SSH edits run on the remote host. Windows hosts do not support this option. POST to the same URL applies the setting and reloads config without opening or closing a PTY. The app uses POST when the preference changes, including for parked terminals. Use your Herdr prefix followed by B (or your custom sidebar binding) to collapse or expand.
+- `GET /v1/pty?mux=tmux:<server>[&muxSession=…][&pane=…]` attaches to a non-default tmux server — pass the `GET /v1/muxes` id as `mux`. Locally the server must be one the daemon lists (it attaches with `-S <socket>`; unknown servers are `422`); with `host=` the remote tmux resolves it (`-L <name>` or `-S <path>`).
 - `GET /v1/pty?mux=…&host=<name>` runs the multiplexer attach through `ssh -t <name>` on a locally-owned PTY; terminal bytes never transit the remote gateway.
 - `POST /v1/hosts/forward` `{"host": "<name>", "ports": [3000, …]}` opens same-port ssh local forwards (`127.0.0.1:<p>` → remote `127.0.0.1:<p>`, max 16 per request) on the host's ControlMaster, so the client can load a remote dev server or simulator preview at `http://localhost:<p>` per the same-port doctrine (no path-prefix reverse proxy — see Transport under `/events`). Idempotent per live master; forwards die with it (ControlPersist reaps an idle master after 10 minutes) and the next request re-establishes them. Unsafe host names are `400`, ssh failures `502` with the last stderr line. A local port collision is detected before the mux request and surfaces as a plain-language `502` (a leftover forward held by the live master is cancelled and re-added instead); the URL is never rewritten to a different port.
 - `GET /v1/hosts/forwards` lists the live tunnels on this machine as `{"forwards": [{"host", "port", "pid"?}]}` — daemon bookkeeping (pruned when the local port has come free) merged with every discovered ssh-owned listener (hand-rolled `ssh -L`, or daemon forwards a restart forgot; `host` is parsed best-effort from the ssh command line, `pid` is the listener's). `POST /v1/hosts/unforward` `{"host", "port", "pid"?}` tears one down: a bridgeable host gets a mux cancel; otherwise the pid — verified to still be an ssh listener on that port — is terminated. Idempotent, judged by the local port coming free rather than ssh's unreliable `-O cancel` exit code. Both act on the LOCAL daemon only; tunnels are invisible to the remote gateway. Discovery never lists ssh-owned listeners as dev servers — a tunnel answers probes with the remote end's content and belongs in the tunnels list.
@@ -433,7 +450,12 @@ The first snapshot identifies the hook and its additive API capabilities:
       "terminal.prompt",
       "terminal.keys",
       "workspaces.live-session",
-      "events.watch.usage"
+      "approvals.answer",
+      "events.watch.usage",
+      "events.doctor",
+      "update.check",
+      "update.apply",
+      "settings"
     ]
   }
 }
@@ -511,7 +533,9 @@ selection (Herdr by default); `context: true` enables loopback context pushes.
 
 The gateway acks with `{"watching": {"workspaces": true, "agent": true, "context": true, "usage": true}}`
 and then pushes frames whenever their content changes (workspaces and context
-on a 1 s tick, agent status on a 250 ms tick, all deduped by JSON):
+on a tick, agent status on a 250 ms tick, all deduped by JSON). The workspace
+tree rebuilds every 5 s at rest and every 1 s for 3 s after any hook event,
+which also wakes the agent watch:
 
 ```jsonc
 // the loopback mux tree, same shape as GET /v1/workspaces
@@ -531,6 +555,7 @@ on a 1 s tick, agent status on a 250 ms tick, all deduped by JSON):
 { "agentStatus": {
     "source": "claude", "session": "agent-session-id",
     "status": "working", "modelName": "fable-5",
+    "statusChangedAt": 1787219601.2,     // when "status" began; see /v1/workspaces
     "title": "Fix login redirect loop",  // conversation title, see /v1/workspaces
     "contextRemaining": 42,  // % of context window left, 1..100; omitted = unknown
     "commands": [
@@ -873,6 +898,89 @@ a daemon running without its TUI bridge `503`. The resolved state reaches
 clients as the next agentStatus frame (the `pendingApproval` field disappears
 and the status leaves `blocked`).
 
+### `GET /v1/update/status`, `POST /v1/update/check`, `POST /v1/update/apply`
+
+The daemon's release updater (capabilities `update.check` and `update.apply`).
+Its state also rides the `doctor` frame on `/events` as `doctor.update`, so a
+client that shows the doctor report sees installs progress without polling.
+
+```jsonc
+{
+  "ok": true,
+  "update": {
+    "current": "v0.4.8",
+    "latest": "v0.4.9",                  // absent until the first check
+    "available": true,
+    "mode": "ask",                       // auto_update: "off" | "ask" | "auto"
+    "canApply": true,                    // false for dev builds and Homebrew
+                                         // installs outside a Cellar layout
+    "install": "homebrew",               // "homebrew" | "standalone" | "dev"
+    "state": "idle",                     // idle | checking | waiting |
+                                         // installing | restarting
+    "error": "install failed: …",        // last check/install failure
+    "checkedAt": "2026-09-29T10:00:00Z"
+  }
+}
+```
+
+`status` returns the current state. `check` asks the CDN now — whatever the
+mode, `off` included — and answers `200` with the result (or the unchanged
+state after 20 seconds). `apply` is the user's explicit go-ahead: it re-checks,
+and when a newer release exists installs it (`brew upgrade` for Homebrew
+installs, the checksummed CDN archive otherwise), runs the new binary's
+`version` to confirm it, waits until no approval or terminal prompt is
+pending, and restarts the daemon in place. It answers `202` with the state
+at the time of the request; an install that cannot update itself answers
+`409`, a daemon without an updater `503`. The gateway drops briefly during the
+restart; clients reconnect and read the new `version`.
+
+With `auto_update = "ask"` (the default) the daemon also sends one silent
+`update_available` host event per new release, so the app can flag the host
+without a connection open:
+
+```jsonc
+// POST /hosts/:hostId/events
+{
+  "type": "agent_state_update",
+  "category": "update_available",
+  "hostId": "…",
+  "currentVersion": "0.4.8",
+  "latestVersion": "0.4.9",
+  "updatedAt": "2026-09-29T10:00:00Z"
+}
+```
+
+### `GET /v1/settings`, `POST /v1/settings`
+
+The daemon's `moshi-hook set` settings (capability `settings`), for the app's
+hooks sheet. `GET` returns every on/off option this OS supports plus the
+auto-update mode:
+
+```jsonc
+{
+  "ok": true,
+  "settings": {
+    "options": [
+      {
+        "name": "git-background-fetch",   // `moshi-hook set` spelling
+        "summary": "fetch upstream every 5m …",
+        "value": true,
+        "default": false,
+        "pending": true                   // saved, applies on next restart
+      }
+    ],
+    "autoUpdate": "ask"                   // "off" | "ask" | "auto"
+  }
+}
+```
+
+`POST {"name": "git-background-fetch", "value": "on"}` writes config.toml the
+way `moshi-hook set` does (comments and other keys preserved) and answers with
+the same shape. Options take `on`/`off`; `auto-update` takes `off`, `ask`, or
+`auto` and applies at once (a non-`off` mode also triggers a release check, so
+`auto` installs a waiting release). An unknown name or bad value answers
+`400`, a daemon without the controller `503`.
+
 ### `POST /v1/prompt[?<session lookup>]`
 
 Types a free-form prompt into the pane running the given agent session and
@@ -958,7 +1066,10 @@ separate terminal events. Free-form text is rejected — it belongs to
 Enumerates the loopback muxes a session-less client can pin: every herdr
 session the CLI knows (running or not — a stopped session is still
 selectable, the PTY attach `herdr --session <name>` starts it) plus tmux
-when installed. `active` marks the option the default loopback resolution
+when installed: the default server as `tmux`, and each other tmux server that
+has sessions as `tmux:<server>`. `<server>` is the socket name for servers in
+tmux's socket directory (what `tmux -L <name>` creates) or the socket path for
+a `tmux_sockets` entry kept elsewhere; a server with no sessions is omitted. `active` marks the option the default loopback resolution
 currently picks; `id` is exactly what clients pass back as the `mux`
 selection. Through the `/hosts/<name>/` bridge the list describes that
 remote machine.
@@ -968,7 +1079,8 @@ remote machine.
   "muxes": [
     { "id": "herdr:default", "kind": "herdr", "session": "default", "running": true, "active": true },
     { "id": "herdr:ztest", "kind": "herdr", "session": "ztest", "running": false },
-    { "id": "tmux", "kind": "tmux", "running": true }   // running: the server has sessions
+    { "id": "tmux", "kind": "tmux", "running": true },  // running: the server has sessions
+    { "id": "tmux:agents", "kind": "tmux", "server": "agents", "running": true }
   ]
 }
 ```
@@ -985,12 +1097,13 @@ With session-lookup params (`ssh-connection`, `mosh-port`[+`mosh-host`], or
 and `focused` marks the caller's current branch. Without them — a loopback
 desktop client has no terminal session — the mux resolves to herdr when its
 server responds, or the default tmux server otherwise, and no group is marked
-focused; `mux=herdr:<session>` / `mux=tmux` pins another local mux instead
+focused; `mux=herdr:<session>` / `mux=tmux` / `mux=tmux:<server>` pins
+another local mux instead
 (see `GET /v1/muxes`). The same optional `mux` param rides every loopback
 `/v1/workspaces/*` call and, as a `mux` field, the `/events` watch frame.
 `422` when the
 terminal's mux is unsupported (zellij) or, for loopback, when no local mux
-exists (or the pinned herdr session is not running); `400` on a malformed
+exists (or the pinned herdr session or tmux server is not running); `400` on a malformed
 `mux` value.
 
 ```jsonc
@@ -1009,6 +1122,7 @@ exists (or the pinned herdr session is not running); `400` on a malformed
       "model": "fable-5",                        // display label; omitted when unknown
       "contextRemaining": 42,                     // 1..100; omitted when unknown
       "cwd": "/Users/me/projects/app-moshi",
+      "statusChangedAt": 1787219601.2,           // when agentStatus began (Unix s)
       "paneCount": 1, "stateChangeOrder": 18
     }, {
       "id": "wB:t2", "label": "2", "focused": false,
@@ -1034,6 +1148,34 @@ topology from `workspace.list`, per-workspace `tab.list`, `pane.list`, and
 `agent.list`, so Herdr releases before 0.9.0 keep working; such trees advertise
 `"paneFocus": "agent-only"`. Separate foreground-process verification remains
 necessary because neither path contains process details.
+
+`statusChangedAt` is when the node's current `agentStatus` began, in Unix
+seconds with millisecond precision. Use it to show "working for 3m" or
+"finished 5m ago", and to sort agents by recency; unlike `stateChangeOrder`
+(herdr only, resets with the herdr server) it exists on both muxes, is
+comparable across hosts, and survives restarts wherever hooks are installed.
+It is present on agent panes, tabs/windows, groups, the `agentStatus` watch
+frame, and `context.agent`. Neither mux exposes transition times, so the
+daemon derives it:
+
+- **Hook time** when the session's hook state explains the shown status: the
+  prompt-submit stamp for `working`, the turn-stop stamp for `idle`/`done`,
+  the permission/question stamp for `blocked`. Exact, and stable across
+  daemon restarts.
+- **Observed time** otherwise (agents without hooks, a status only the screen
+  shows, a turn that resumed after a permission wait): when the daemon first
+  saw the status, or — herdr — a new `stateChangeOrder`. Accurate to the
+  sampling cadence (250 ms for a watched agent, 1–5 s for the tree).
+- `statusChangedAtApprox: true` marks an observed time from the first sighting
+  (typically after a daemon restart): the status began *at or before* it, so
+  render it as "≥ 5m" rather than an exact age.
+
+`done` and `idle` share one clock (visiting a done tab does not reset it). A
+tab/window takes the newest time among its agent panes that show the tab's
+status; a group the newest among children showing its status, or among all
+timed children when the mux reports no group status (tmux). Shell panes and
+tabs without an agent carry no time. A suggested sort is attention first
+(`blocked`, then `done`), then `statusChangedAt` descending.
 
 `command` marks a terminal that has something running: the base name of the
 foreground process of a shell (non-agent) tab or pane — `node`, `vim`, `go` —
@@ -1078,9 +1220,9 @@ contract: `agent.focus` for agent panes, and a bounded neighbor-by-neighbor
 focus walk toward shell panes; a walk that cannot reach the pane reports the
 `not-an-agent-pane` fallback reason.
 
-### `GET /v1/transcripts?session=<id>[&source=claude|codex|cursor|grok|opencode|hermes|pi|omp|kimi|antigravity][&limit=<n>][&cursor=<opaque>]`
+### `GET /v1/transcripts?session=<id>[&source=claude|codex|cursor|grok|opencode|hermes|pi|omp|omo|kimi|antigravity|qoder|devin|copilot|amp|droid|jcode|goose][&limit=<n>][&cursor=<opaque>]`
 
-Opens a local WebSocket stream for a live agent transcript. New clients should pass `source`; when omitted for backward compatibility, the gateway tries Claude first, then Codex. Claude transcripts prefer the exact per-session path captured from hook events (including `CLAUDE_CONFIG_DIR` profiles), then fall back to `~/.claude/projects` for older session state. Codex transcripts are resolved from `$CODEX_HOME/sessions` or `~/.codex/sessions` rollout files. Cursor resolves its native `~/.cursor/chats/<workspace>/<conversation-id>/store.db` and streams role-bearing message blobs in insertion order, polling the live SQLite store for appended messages. Grok streams the authoritative ACP `updates.jsonl` reported by its hooks, with a `$GROK_HOME/sessions/<encoded-cwd>/<session-id>/` scan as a fallback for older sessions. Completed Grok `image_gen` results are exposed as lazy ACP image blocks backed by the generated file, so Chat View can render them without terminal graphics support. Pi and OMP transcripts use the exact JSONL path reported by the installed extension, so profiles and custom session locations work without a directory scan. OMP validation understands its v3 fixed-width title slot before the session header. Kimi transcripts resolve through its profile-aware `session_index.jsonl` and stream the main agent's live `wire.jsonl`. OpenCode is proxied through the live local server recorded by its plugin. Transcript bytes stay on the host and are streamed only over the local forwarded gateway. If Codex resume creates a newer rollout for the same session id, reconnect to resolve the newest file.
+Opens a local WebSocket stream for a live agent transcript. New clients should pass `source`; when omitted for backward compatibility, the gateway tries Claude first, then Codex. Claude transcripts prefer the exact per-session path captured from hook events (including `CLAUDE_CONFIG_DIR` profiles), then fall back to `~/.claude/projects` for older session state. Codex transcripts are resolved from `$CODEX_HOME/sessions` or `~/.codex/sessions` rollout files. Cursor resolves its native `~/.cursor/chats/<workspace>/<conversation-id>/store.db` and streams role-bearing message blobs in insertion order, polling the live SQLite store for appended messages. Grok streams the authoritative ACP `updates.jsonl` reported by its hooks, with a `$GROK_HOME/sessions/<encoded-cwd>/<session-id>/` scan as a fallback for older sessions. Completed Grok `image_gen` results are exposed as lazy ACP image blocks backed by the generated file, so Chat View can render them without terminal graphics support. Pi and OMP transcripts use the exact JSONL path reported by the installed extension, so profiles and custom session locations work without a directory scan. OMP validation understands its v3 fixed-width title slot before the session header. Kimi transcripts resolve through its profile-aware `session_index.jsonl` and stream the main agent's live `wire.jsonl`. Qoder writes Claude-format JSONL, so it reuses the Claude reader: the exact path from its hooks wins, with `$QODER_CONFIG_DIR/projects` or `~/.qoder/projects` as the fallback search root. Devin CLI keeps each session as one ATIF JSON document under `$XDG_DATA_HOME/devin/cli/transcripts/<id>.json` (default `~/.local/share/devin/cli/transcripts`); the gateway reloads it on each poll and converts its steps into Claude-shaped `user`/`assistant` rows (tool calls become `tool_use`, observations `tool_result`), so clients reuse their Claude reducer. GitHub Copilot CLI appends session events to `$COPILOT_HOME/session-state/<id>/events.jsonl` (default `~/.copilot`); the gateway keeps `user.message`, `assistant.message` and `tool.execution_complete` rows and rewrites them into Claude-shaped rows (built-in tools renamed to Read/Edit/Write/Bash/Grep). Amp keeps threads on its servers: the gateway runs `amp threads export <id>` while a stream is open and converts the messages into Claude-shaped rows. The Moshi Amp plugin touches `<state>/amp-activity/<thread>` on each turn and tool result; the poll only stats that marker and re-exports when it moved (or every 30s), sharing one cached export across viewers. Factory Droid transcripts resolve from the exact path its hooks report (fallback `~/.factory/sessions/*/<id>.jsonl`); the filter unwraps its Claude-compatible `message` rows and drops TUI-only rows (`visibility: "user_only"`) and `context-*` system reminders. OpenCode is proxied through the live local server recorded by its plugin. Transcript bytes stay on the host and are streamed only over the local forwarded gateway. If Codex resume creates a newer rollout for the same session id, reconnect to resolve the newest file.
 
 Server messages are JSON objects with `type` (`backlog`, `older`, `append`, `resumed`, `reset`, or `error`), `source`, physical `line` numbers, and raw JSONL rows for client-side rendering. Clients can request older rows with `{"type":"older","beforeLine":123,"limit":50}`.
 
@@ -1092,7 +1234,7 @@ The optional `cursor` resumes a previously committed transcript checkpoint. Curs
 
 A `cursor` on an `append` is the **commit marker for the entire burst**, including preceding cursorless fragments. Buffer those fragments and reduce them only after the commit marker arrives. On disconnect, discard uncommitted fragments and resume from the last committed cursor. Never use `totalLines` as a checkpoint: every fragment may report the final total before all rows have arrived. Persist the cursor and corresponding reducer inputs together. `resumed` completes catch-up without changing the oldest loaded boundary or older-page availability. `older` responses never advance the forward cursor. Materialized `backlog` responses carry a cursor; virtual pending rows do not. A cursorless backlog is still authoritative and requires a full refresh. Mutable OpenCode rows can invalidate an earlier prefix, so an active-turn reconnect may legitimately require a full refresh.
 
-### `GET /v1/transcripts/blob?session=<id>&line=<n>[&block=<i>][&source=claude|codex|cursor|grok|opencode|hermes|pi|omp|kimi|antigravity]`
+### `GET /v1/transcripts/blob?session=<id>&line=<n>[&block=<i>][&source=claude|codex|cursor|grok|opencode|hermes|pi|omp|omo|kimi|antigravity|qoder|devin|copilot|amp|droid|jcode|goose]`
 
 Serves the raw image bytes of one content block of one transcript line, re-read from disk or re-fetched from OpenCode on demand (so redaction never loses data). `line` is the physical transcript line index reported by the stream; `block` (default 0) indexes `message.content[i]` for Claude/Pi/OMP, including a Claude `tool_result` whose content contains an image; ACP `update.content[i]` for Grok; `event.result.output[i]` for Kimi; `payload.content[i]` / `payload.output[i]` for Codex; or the flattened OpenCode image attachments. Grok's synthetic Imagine blocks map back to `rawInput.image[i]` or `rawOutput.path`; OMP `blob:sha256:` references resolve through the profile/XDG-aware `blobs/` directory beside its managed `sessions/` tree; Kimi `blobref:<mime>;<sha256>` references resolve through the `blobs/` directory beside its main-agent `wire.jsonl`. For Codex `view_image` function calls the endpoint resolves the call's absolute file `path` on the host and serves the file when it sniffs as an image (capped at 32 MB). Responds with the image `Content-Type` and cache headers; returns 404 when the addressed block is not an image.
 
