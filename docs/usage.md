@@ -3,8 +3,8 @@
 ```bash
 moshi-hook pair --token <pairing-token>   # 1. pair the agent-hooks daemon
 moshi-hook install                        # 2. write hook configs for installed agents
-moshi-hook service install                # 3. run persistently on Linux or Windows
-moshi-hook serve                          #    foreground fallback (or `brew services start moshi-hook` on macOS)
+moshi-hook service install                # 3. run persistently (launchd on macOS, systemd on Linux, logon on Windows)
+moshi-hook serve                          #    foreground fallback (Homebrew installs: `brew services start moshi-hook`)
 ```
 
 Native Windows (**experimental**) bootstrap:
@@ -194,9 +194,10 @@ never uses, refreshes, or rewrites the refresh token.
 | `diff [path] [--no-open] [--port N]` | Serve the embedded Git diff viewer for a local project directory. |
 | `install` | Write Moshi entries into supported agent config files. By default, only installs targets whose config root already exists and reports missing agents as skipped. Use `--target claude,codex,opencode,gemini,antigravity,cursor,kimi,qwen,qoder,droid,copilot,amp,devin,grok,omp,pi,omo,jcode,goose,hermes` to force or limit the set. Non-destructive: leaves user-owned hooks alone. OpenCode installs globally by default; use `--local` for `.opencode/plugins` in the current project. When Codex 0.157+ is installed with its shared background server on, `install` asks whether to turn it off (non-interactive runs print a pointer to `doctor`). |
 | `uninstall` | Remove Moshi-owned entries from those files. For OpenCode, pass `--local` to remove a project-local install. |
-| `service install` | Linux: install and start a systemd user service. Windows groundwork: register current-user logon startup under `HKCU\...\Run` and start a detached daemon without elevation. |
-| `service uninstall` | Disable/remove the Linux systemd service or Windows logon value and stop the daemon. |
-| `service status` | Show systemd status on Linux or the Windows logon registration. |
+| `service install` | macOS: write and load the `app.getmoshi.moshi-hook` LaunchAgent (`~/Library/LaunchAgents/`), which starts `serve` at login and keeps it running; stdout/stderr go to `<state>/service.log`. Re-running it reloads the agent on the current binary. Homebrew installs use `brew services start moshi-hook` instead, and `service install` refuses while the Homebrew service is installed so only one daemon runs. Linux: install and start a systemd user service. Windows groundwork: register current-user logon startup under `HKCU\...\Run` and start a detached daemon without elevation. |
+| `service uninstall` | Unload and remove the macOS LaunchAgent, or disable/remove the Linux systemd service or Windows logon value and stop the daemon. |
+| `service status` | Show the LaunchAgent (`launchctl print`, including a Homebrew service) on macOS, systemd status on Linux, or the Windows logon registration. |
+| `service restart` | Restart the daemon service: `launchctl kickstart -k` on macOS (the `service install` agent, or the Homebrew one), `systemctl --user restart` on Linux, stop + start on Windows. |
 | `serve [--gateway-listen 127.0.0.1:24543]` | Run the daemon and localhost API/diff gateway in the foreground. Does not serve the general web UI. Single-instance via an OS file lock under the state directory. |
 | `status [--json]` | Pairing state, paths, and best-effort server attachment status for the paired host. `--json` also carries hook install state and stays local (no server round-trip). For hooks, multiplexers, and Chat View readiness, run `doctor`. |
 | `doctor [--yes] [--json]` | Check which Moshi features work on this host and what each one is missing: agent inbox and alerts, Chat View, Workspaces and Jump To, the session picker, the diff viewer, Browser/Simulator preview, and usage. It checks the daemon and its gateway (including a version mismatch with the installed CLI), pairing (confirmed with Moshi), agent hooks, settings that turn a feature off, and tmux/herdr — including duplicate installs where the copy the app's session picker or the daemon would run differs from the one running your server, tmux older than 2.6 (Moshi needs `select-pane -T` and `send-keys -X`), the EL10 tmux 3.3a capture bug, and herdr older than 0.9 (slower fallback). Prints numbered fixes and a checklist of things only you can confirm (phone notifications, Live Activity, connecting from the app, starting agents in tmux/herdr, restarting agents after hook changes). When Codex 0.157+ runs its shared background server, `doctor` offers to turn it off (`--yes` applies without asking); see [Codex background server](#codex-background-server). `--json` prints the same report as one object (feature verdicts, checks, numbered fixes) and never prompts; the running daemon also runs these checks at start, after hook installs, when the Moshi app connects to a report older than 30 minutes, and when the app's hooks sheet asks for a re-check (keeping pairing local), and pushes the report to the app over the gateway's `/events` socket. |
@@ -376,7 +377,7 @@ Replace `/opt/homebrew/bin/moshi-hook` with `which moshi-hook` if installed else
 | Local IPC | `<state>/moshi-hook.sock` | `$XDG_RUNTIME_DIR/moshi-hook.sock` | `\\.\pipe\moshi-hook` |
 | Secrets | Keychain (`app.getmoshi.hook`) by default; `~/.config/moshi/secrets.json` with `--store file` | `<state>/secrets.json` (0600) | `<state>\secrets.json` |
 
-When run via `brew services`, logs land at `$(brew --prefix)/var/log/moshi-hook.log`.
+When run via `brew services`, stdout/stderr land at `$(brew --prefix)/var/log/moshi-hook.log`; under the `service install` LaunchAgent they go to `<state>/service.log`. The structured log is always `<state>/hook.log`.
 
 Native Windows is experimental: unsigned preview binaries, a narrower agent matrix, and no graceful
 process stop. WSL2 remains the stable layout — run `moshi-hook` and your agents inside the same
