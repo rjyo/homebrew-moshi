@@ -5,12 +5,12 @@
 class MoshiHook < Formula
   desc "Portable daemon + CLI that bridges AI coding agents to the Moshi mobile app"
   homepage "https://getmoshi.app"
-  version "0.4.11"
+  version "0.4.12"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://cdn.getmoshi.app/hook/v0.4.11/moshi-hook-app_Darwin_x86_64.tar.gz"
-      sha256 "f5eaa289be6816026466e4df9eec4d079dc5985d03dcece27e209aeb0f15c404"
+      url "https://cdn.getmoshi.app/hook/v0.4.12/moshi-hook-app_Darwin_x86_64.tar.gz"
+      sha256 "4a87c7fd1e263b200ea0dae1a36c59a767ebb31d75f1fb0556f858c6ef4f7b16"
 
       define_method(:install) do
         prefix.install "MoshiHook.app"
@@ -19,8 +19,8 @@ class MoshiHook < Formula
       end
     end
     if Hardware::CPU.arm?
-      url "https://cdn.getmoshi.app/hook/v0.4.11/moshi-hook-app_Darwin_arm64.tar.gz"
-      sha256 "258b9bb610f90f82c2d9dc5f97aa24e08a363913a60a1535c3845bc0323a7dc8"
+      url "https://cdn.getmoshi.app/hook/v0.4.12/moshi-hook-app_Darwin_arm64.tar.gz"
+      sha256 "30a6ff62792f5f0ad9bb1039a5941893bb46ba124c22f9e2eed1e7f60c396572"
 
       define_method(:install) do
         prefix.install "MoshiHook.app"
@@ -32,8 +32,8 @@ class MoshiHook < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://cdn.getmoshi.app/hook/v0.4.11/moshi-hook_Linux_x86_64.tar.gz"
-      sha256 "e348ff0fa10d71f7ff2d260fb9d526b0498cfcfb02db9e26ef77e031ce9eb0ee"
+      url "https://cdn.getmoshi.app/hook/v0.4.12/moshi-hook_Linux_x86_64.tar.gz"
+      sha256 "da829f3b360d3cce817639b3236689af7c291cd915ca964f27c3c71e74ce906e"
       define_method(:install) do
         prefix.install "MoshiHook.app"
         bin.install_symlink prefix/"MoshiHook.app/Contents/MacOS/moshi-hook"
@@ -41,8 +41,8 @@ class MoshiHook < Formula
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://cdn.getmoshi.app/hook/v0.4.11/moshi-hook_Linux_arm64.tar.gz"
-      sha256 "d72f36a7a75723d8c85e7af009f98beffa72368f8c280e386deed83867b27b6a"
+      url "https://cdn.getmoshi.app/hook/v0.4.12/moshi-hook_Linux_arm64.tar.gz"
+      sha256 "6a75ddff5e7999d6d5da77638d052b3c98872879089c09c06f257f18d753d70e"
       define_method(:install) do
         bin.install "moshi-hook"
         bin.install_symlink "moshi-hook" => "moshi"
