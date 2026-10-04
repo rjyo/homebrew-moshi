@@ -35,8 +35,7 @@ class MoshiHook < Formula
       url "https://cdn.getmoshi.app/hook/v0.4.16/moshi-hook_Linux_x86_64.tar.gz"
       sha256 "60b15cd8323c792fac00e35c727cdf93ddc6f118b8178e272ba4d879a540cbf7"
       define_method(:install) do
-        prefix.install "MoshiHook.app"
-        bin.install_symlink prefix/"MoshiHook.app/Contents/MacOS/moshi-hook"
+        bin.install "moshi-hook"
         bin.install_symlink "moshi-hook" => "moshi"
       end
     end
