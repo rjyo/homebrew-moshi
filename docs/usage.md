@@ -194,8 +194,8 @@ never uses, refreshes, or rewrites the refresh token.
 | `host revoke <id>` | Remove a Moshi host SSH key from `authorized_keys`. |
 | `host enable-ssh` | Help enable SSH prerequisites on macOS. |
 | `diff [path] [--no-open] [--port N]` | Serve the Git diff API for a local project directory (the viewer UI lives in the Moshi app). |
-| `install` | Write Moshi entries into supported agent config files. By default, only installs targets whose config root already exists and reports missing agents as skipped. Use `--target claude,codex,opencode,gemini,antigravity,cursor,kimi,qwen,qoder,droid,copilot,amp,devin,grok,omp,pi,omo,jcode,goose,hermes` to force or limit the set. Non-destructive: leaves user-owned hooks alone. OpenCode installs globally by default; use `--local` for `.opencode/plugins` in the current project. When Codex 0.157+ is installed with its shared background server on, `install` asks whether to turn it off (non-interactive runs print a pointer to `doctor`). |
-| `uninstall` | Remove Moshi-owned entries from those files. For OpenCode, pass `--local` to remove a project-local install. |
+| `install` | Write Moshi entries into supported agent config files. By default, only installs targets whose config root already exists and reports missing agents as skipped. Use `--target claude,codex,opencode,gemini,antigravity,cursor,kimi,qwen,qoder,droid,copilot,amp,devin,grok,omp,pi,omo,jcode,goose,hermes` to force or limit the set. Non-destructive: leaves user-owned hooks alone. Installs are global by default; `--local` installs into the current project instead (Claude: `.claude/settings.local.json`; OpenCode: `.opencode/plugins`) and fails for other targets rather than falling back to global. Integrations and `doctor` only check global installs. When Codex 0.157+ is installed with its shared background server on, `install` asks whether to turn it off (non-interactive runs print a pointer to `doctor`). |
+| `uninstall` | Remove Moshi-owned entries from those files. Pass `--local` (Claude, OpenCode) to remove a project install. |
 | `service install` | macOS: write and load the `app.getmoshi.moshi-hook` LaunchAgent (`~/Library/LaunchAgents/`), which starts `serve` at login and keeps it running; stdout/stderr go to `<state>/service.log`. Re-running it reloads the agent on the current binary. Homebrew installs use `brew services start moshi-hook` instead, and `service install` refuses while the Homebrew service is installed so only one daemon runs. Linux: install and start a systemd user service. Windows groundwork: register current-user logon startup under `HKCU\...\Run` and start a detached daemon without elevation. |
 | `service uninstall` | Unload and remove the macOS LaunchAgent, or disable/remove the Linux systemd service or Windows logon value and stop the daemon. |
 | `service status` | Show the LaunchAgent (`launchctl print`, including a Homebrew service) on macOS, systemd status on Linux, or the Windows logon registration. |
@@ -352,7 +352,7 @@ Events from these commands share the host's push rate limit with agents
 
 | Agent | Managed file |
 |---|---|
-| Claude Code | `$CLAUDE_CONFIG_DIR/settings.json` or `~/.claude/settings.json` |
+| Claude Code | `$CLAUDE_CONFIG_DIR/settings.json` or `~/.claude/settings.json`; `.claude/settings.local.json` with `--local` |
 | Codex | `$CODEX_HOME/hooks.json` plus `$CODEX_HOME/config.toml` feature flag, or `~/.codex/...` |
 | OpenCode | `$OPENCODE_CONFIG_DIR/plugins/moshi-hooks.ts`, `$XDG_CONFIG_HOME/opencode/plugins/moshi-hooks.ts`, or `~/.config/opencode/plugins/moshi-hooks.ts`; `.opencode/plugins/moshi-hooks.ts` with `--local` |
 | Gemini CLI | `~/.gemini/settings.json` |
