@@ -472,6 +472,10 @@ suppress_push_while_unlocked = false
 # off, behind counts are as of your own last fetch.
 #   moshi-hook set git-background-fetch on
 git_background_fetch = false
+# macOS only: run the bundled mata host so Moshi can stream and control
+# simulators and emulators. Applies after a daemon restart.
+#   moshi-hook set mata off
+mata = true
 # Optional HTTP probe allowlist for Browser Preview discovery. Omit it (or use
 # "all") to scan every eligible loopback listener. An empty array disables
 # HTTP probing entirely. Entries are single ports or inclusive "lo-hi" ranges,
