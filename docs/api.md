@@ -516,11 +516,24 @@ tmux_sockets = []
 #   moshi-hook set files-exclude node_modules,.git,*.pyc
 #   moshi-hook set files-exclude default
 files_exclude = "default"
+# Loopback connections from other accounts on this machine are refused: the
+# gateway reads and writes the user's files. Set true only when every account
+# on the machine is trusted.
+allow_other_users = false
+# Extra hostnames (no port) a browser may use to reach the gateway or
+# `moshi-hook web` besides loopback: a LAN name, or a tunnel that keeps the
+# browser's Host (Cloudflare Tunnel, Tailscale Serve). Trusted the same as
+# localhost; this is not authentication. Prefer the CLI:
+#   moshi-hook set allowed-hosts moshi.example.com
+allowed_hosts = []
 ```
 
 4. Default `127.0.0.1:24543`
 
-Gateway HTTP is loopback-only and does not require `Authorization`. Clients reach it through SSH local forwarding. Host/account auth remains limited to daemon-to-Moshi server calls that deliver pushes, usage, approvals, and WebSocket frames.
+Gateway HTTP is loopback-only and does not require `Authorization`. Clients reach it through SSH local forwarding. Two checks stand in for auth (`internal/localguard`):
+
+- A loopback connection is accepted only from a socket owned by the daemon's user (or root), looked up in the kernel's socket table (Linux `/proc/net/tcp{,6}`, macOS `net.inet.tcp.pcblist_n`; not yet on Windows). sshd's port forward, the web client, the desktop apps and `ssh -W` all connect as that user. `[gateway] allow_other_users = true` turns this off.
+- A request is refused with `403` when its `Host` is not loopback or in `allowed_hosts` (DNS rebinding), its `Origin` is present and not a loopback/allowed `http(s)` origin (cross-site pages, `null`), or it has no `Origin` and `Sec-Fetch-Site: cross-site` and is not a GET/HEAD navigation (embedding a gateway URL in a frame stays allowed; the framing page can't read it). `moshi-hook web` with a non-loopback `--listen` also accepts IP-literal Hosts and same-origin pages on them. Proxies in front of a guarded server (`moshi-hook web`, the `/hosts/<h>/` bridge) check the browser request themselves, then forward it with a loopback Host and without `Origin`/`Sec-Fetch-*`. Host/account auth remains limited to daemon-to-Moshi server calls that deliver pushes, usage, approvals, and WebSocket frames.
 
 The HTTP gateway serves diff and bounded control actions for servers surfaced by discovery. Pull-only host inspection is intentionally not exposed here: `GET /v1/capabilities`, `GET /v1/servers`, and `GET /v1/sessions/context` return `404`. Use the SSH preflight CLI commands below instead.
 
