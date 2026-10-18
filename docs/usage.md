@@ -17,7 +17,7 @@ The PowerShell installer verifies the published ZIP checksum, installs without
 elevation into versioned per-user directories, and places a stable junction on
 the user `PATH`. See [windows.md](windows.md) for the beta support boundary.
 
-After step 2, supported agents route their hooks through `moshi-hook`: Claude Code, Codex, OpenCode, Gemini CLI, Antigravity, Cursor, Kimi, Qwen Code, Qoder CLI, Factory Droid, GitHub Copilot CLI, Amp, Devin CLI, Grok Build, OMP (Oh My Pi), Pi, and Hermes Agent. The daemon (`serve`) holds the WebSocket to Moshi and the local Unix socket that hooks talk to.
+After step 2, supported agents route their hooks through `moshi-hook`: Claude Code, Codex, OpenCode, Gemini CLI, Antigravity, Cursor, Kimi, Qwen Code, Qoder CLI, Factory Droid, GitHub Copilot CLI, Amp, Devin CLI, Grok Build, OMP (Oh My Pi), Pi, and Hermes Agent. The daemon (`serve`) holds the WebSocket to Moshi and the local Unix socket that hooks talk to. Only one `serve` runs per user. A second one started from a terminal exits with "another moshi-hook serve is already running"; one started by launchd, systemd or Moshi Go (no terminal on stdin) waits instead and takes over when the running daemon exits, re-executing the binary it was started as with the lock held throughout, so a supervisor's KeepAlive/Restart never loops on the lock. Any serve without a terminal on stdin waits, supervised or not (`serve </dev/null &`, containers); pass `--exit-if-running` to get the error instead.
 
 ## Local web client
 
@@ -93,8 +93,8 @@ Useful host commands:
 |---|---|
 | `moshi [--no-open] [--listen <addr>]` (no path) | Run the embedded web client on `127.0.0.1:24544` (or `--listen`, e.g. `0.0.0.0:24544` for all interfaces) until Ctrl-C and open it in the default browser unless `--no-open` is set. Reuses a persistent daemon or starts a temporary one automatically, proxies API/WebSocket traffic to it, and prints request logs. |
 | `host setup [--name <n>] [--host <h>] [--port <p>] [--user <u>] [--force] [--json]` | Start an Easy Pair setup session, print the QR, and pair this daemon after claim. |
-| `host list` | List local Moshi SSH/Mosh pairings installed on this host. |
-| `host revoke <id>` | Remove a Moshi host public key from `authorized_keys`. |
+| `host list` | List the Moshi SSH/Mosh keys Easy Pair added to `authorized_keys` on this host. |
+| `host revoke <id>` | Remove a Moshi host public key from `authorized_keys`. Pass a host id to remove every phone paired to that host. |
 | `host enable-ssh` | On macOS, open/enable Remote Login prerequisites where supported. |
 
 `moshi-hook pair --token` is still available for manual daemon re-pairing. Easy Pair does not store the phone's user token on the host; it stores the host-scoped `hostSecret` used by inbox, Live Activity, Apple Watch events, usage sync, and approvals.
@@ -201,7 +201,7 @@ gets no card.
 | `pair --token <t> [--name <n>] [--store keychain\|file]` | Pair the agent-hooks daemon. Token comes from the Moshi mobile app. Re-running rotates the secret and can repair this host after a license/subscription change. macOS defaults to `keychain` until a store preference is saved; use `file` for headless sessions. |
 | `unpair` | Remove the agent-hooks secret and server registration. |
 | `host setup` | Start an Easy Pair SSH/Mosh setup session and print a QR for Moshi to scan. |
-| `host list` | List local Moshi host SSH pairings. |
+| `host list` | List the Moshi host SSH keys in `authorized_keys`. |
 | `host revoke <id>` | Remove a Moshi host SSH key from `authorized_keys`. |
 | `host enable-ssh` | Help enable SSH prerequisites on macOS. |
 | `install` | Write Moshi entries into supported agent config files. By default, only installs targets whose config root already exists and reports missing agents as skipped. Use `--target claude,codex,opencode,gemini,antigravity,cursor,kimi,qwen,qoder,droid,copilot,amp,devin,grok,omp,pi,omo,jcode,goose,hermes` to force or limit the set. Non-destructive: leaves user-owned hooks alone. Installs are global by default; `--local` installs into the current project instead (Claude: `.claude/settings.local.json`; OpenCode: `.opencode/plugins`) and fails for other targets rather than falling back to global. Integrations and `doctor` only check global installs. When Codex 0.157+ is installed with its shared background server on, `install` asks whether to turn it off (non-interactive runs print a pointer to `doctor`). |
@@ -306,7 +306,9 @@ The title defaults to the message's first line. `--silent` updates the inbox
 without a visible push. `notify` is best effort: when the notification can't
 be delivered (daemon not running, not paired, push rate limit reached) it
 prints the reason to stderr and still exits 0, so it never breaks the script
-calling it. `--strict` exits 1 instead.
+calling it. `--strict` waits until the Moshi server has accepted the
+notification, through the daemon's retries (up to about 40 s), and exits 1
+when it was dropped or not confirmed in time.
 
 ### `ask`
 

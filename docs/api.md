@@ -205,9 +205,14 @@ command ran inside one, is only there so tapping the push opens it.
 
 The daemon treats ext sources differently from agents in four ways:
 
-- The `ack` waits up to 5 s for the first publish attempt and reports it in
-  `publish`: `published`, `retrying`, `pending` (no answer yet), or a drop:
-  `not_paired`, `rate_limited`, `no_push_token`, `suppressed`, `rejected`.
+- The `ack` waits up to 5 s for the publish outcome and reports it in
+  `publish`: `published`, `pending` (no outcome yet; the daemon may still be
+  retrying), or a drop: `not_paired`, `rate_limited`, `no_push_token`,
+  `suppressed`, `rejected`, `failed` (every retry failed). A transient
+  failure is not an outcome: the daemon retries (3 attempts over about
+  2.5 s, 10 s each at most) and reports how they ended. With
+  `"waitPublish": true` (`notify --strict`) the ack waits up to 35 s, long
+  enough for every retry. Older daemons may also answer `retrying`.
 - An ext `approval.request` waits for its own `expiresAt` (capped at 24 h)
   instead of the daemon's default approval timeout. When its push is dropped
   it resolves at once with `decision: "undeliverable"` and the drop reason
