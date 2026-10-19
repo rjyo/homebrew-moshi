@@ -1006,6 +1006,11 @@ answer.
 Option indexes are zero-based. Every question must have at least one selection;
 single-select questions require exactly one.
 
+OMP's Ask dialog opens its cursor on the recommended option, which an OMP
+`pendingPrompt` question names as `recommendedIndex`. A question may echo it;
+when it does not and the form matches the hook-captured prompt (same
+`toolUseId`, questions and labels), the bridge takes it from there.
+
 Claude Code and OMP answers may carry free text instead (capability
 `questions.text`): `{ "optionIndexes": [], "text": "Something else" }`. The
 bridge types it into the form's own text row, Claude's "Type something" or
@@ -1283,7 +1288,8 @@ prompt whose turn edited files).
 ```
 
 Errors: `400` invalid body or a non-Claude source; `409` Claude is working,
-its input holds a draft, the prompt isn't in the rewind list (a branch already
+its input holds a draft (Claude's dim suggestion doesn't count under tmux
+or herdr; zellij's capture can't tell them apart), the prompt isn't in the rewind list (a branch already
 rewound past it), another prompt starts the same way (a cut quote can't
 tell them apart), the prompt has no code changes to restore, the screen
 didn't match, or the restore didn't finish in time (check the terminal); `404`/`422` as `/v1/keys`.
