@@ -521,6 +521,16 @@ tmux_sockets = []
 #   moshi-hook set files-exclude node_modules,.git,*.pyc
 #   moshi-hook set files-exclude default
 files_exclude = "default"
+# Folders outside the home directory the Files browser may also open, e.g. a
+# WSL project under /mnt/c. The working folder of a live agent session (one
+# whose agent process and start time the hooks recorded, and that is still
+# running; macOS and Linux) is allowed without listing it. Entries must be absolute; "/" and other
+# filesystem roots are refused, and nothing under /mnt is allowed by default.
+# Inside these folders a symlink may not lead outside the folder (or into
+# anything but home); everything else is answered 403 "outside allowed folders".
+#   moshi-hook set files-roots /mnt/c/Users/me/proj,/mnt/d/data
+#   moshi-hook set files-roots none
+files_roots = []
 # Loopback connections from other accounts on this machine are refused: the
 # gateway reads and writes the user's files. Set true only when every account
 # on the machine is trusted.
@@ -584,7 +594,8 @@ The first snapshot identifies the hook and its additive API capabilities:
       "events.doctor",
       "update.check",
       "update.apply",
-      "settings"
+      "settings",
+      "restart"
     ]
   }
 }
@@ -1124,7 +1135,7 @@ at the time of the request; an install that cannot update itself answers
 `409`, a daemon without an updater `503`. The gateway drops briefly during the
 restart; clients reconnect and read the new `version`.
 
-With `auto_update = "ask"` (the default) the daemon also sends one silent
+With `auto_update = "ask"` the daemon also sends one silent
 `update_available` host event per new release, so the app can flag the host
 without a connection open:
 
@@ -1143,8 +1154,10 @@ without a connection open:
 ### `GET /v1/settings`, `POST /v1/settings`
 
 The daemon's `moshi-hook set` settings (capability `settings`), for the app's
-hooks sheet. `GET` returns every on/off option this OS supports plus the
-auto-update mode:
+hooks sheet. `GET` returns every on/off option this OS supports, except
+CLI-only ones (`allow-other-users`), plus the auto-update mode. `scan-ports`
+appears as a switch: on is anything but `none`; `off` writes `none`, and `on`
+writes `all` only when it was `none` (a CLI port list stays as set):
 
 ```jsonc
 {
@@ -1170,6 +1183,18 @@ the same shape. Options take `on`/`off`; `auto-update` takes `off`, `ask`, or
 `auto` and applies at once (a non-`off` mode also triggers a release check, so
 `auto` installs a waiting release). An unknown name or bad value answers
 `400`, a daemon without the controller `503`.
+
+### `POST /v1/restart`
+
+Restarts the daemon in place (capability `restart`), so `pending` settings take
+effect without `moshi-hook service restart`. The daemon answers `202
+{"ok": true}`, shuts down cleanly, and execs the same binary with the same
+flags (Windows: the update supervisor starts it again), keeping its PID under
+launchd/systemd; a Homebrew install restarts through its stable `opt/` path.
+While an approval or terminal prompt waits on the user, or an update is
+installing, it answers `409` and stays up. A request while a restart is
+already underway succeeds without starting another. A daemon still starting,
+or without the restarter, answers `503`.
 
 ### `POST /v1/prompt[?<session lookup>]`
 
@@ -1455,7 +1480,7 @@ focus walk toward shell panes; a walk that cannot reach the pane reports the
 
 ### `GET /v1/transcripts?session=<id>[&source=claude|codex|cursor|grok|opencode|hermes|pi|omp|omo|kimi|antigravity|qoder|devin|copilot|amp|droid|jcode|goose][&limit=<n>][&cursor=<opaque>][&subagents=1][&agent=<agentId>]`
 
-Opens a local WebSocket stream for a live agent transcript. New clients should pass `source`; when omitted for backward compatibility, the gateway tries Claude first, then Codex. Claude transcripts prefer the exact per-session path captured from hook events (including `CLAUDE_CONFIG_DIR` profiles), then fall back to `~/.claude/projects` for older session state. Codex transcripts are resolved from `$CODEX_HOME/sessions` or `~/.codex/sessions` rollout files. Cursor resolves its native `~/.cursor/chats/<workspace>/<conversation-id>/store.db` and streams role-bearing message blobs in insertion order, polling the live SQLite store for appended messages. Grok streams the authoritative ACP `updates.jsonl` reported by its hooks, with a `$GROK_HOME/sessions/<encoded-cwd>/<session-id>/` scan as a fallback for older sessions. Completed Grok `image_gen` results are exposed as lazy ACP image blocks backed by the generated file, so Chat View can render them without terminal graphics support. Pi and OMP transcripts use the exact JSONL path reported by the installed extension, so profiles and custom session locations work without a directory scan. OMP validation understands its v3 fixed-width title slot before the session header. Kimi transcripts resolve through its profile-aware `session_index.jsonl` and stream the main agent's live `wire.jsonl`. Qoder writes Claude-format JSONL, so it reuses the Claude reader: the exact path from its hooks wins, with `$QODER_CONFIG_DIR/projects` or `~/.qoder/projects` as the fallback search root. Devin CLI keeps each session as one ATIF JSON document under `$XDG_DATA_HOME/devin/cli/transcripts/<id>.json` (default `~/.local/share/devin/cli/transcripts`); the gateway reloads it on each poll and converts its steps into Claude-shaped `user`/`assistant` rows (tool calls become `tool_use`, observations `tool_result`), so clients reuse their Claude reducer. GitHub Copilot CLI appends session events to `$COPILOT_HOME/session-state/<id>/events.jsonl` (default `~/.copilot`); the gateway keeps `user.message`, `assistant.message` and `tool.execution_complete` rows and rewrites them into Claude-shaped rows (built-in tools renamed to Read/Edit/Write/Bash/Grep). Amp keeps threads on its servers: the gateway runs `amp threads export <id>` while a stream is open and converts the messages into Claude-shaped rows. The Moshi Amp plugin touches `<state>/amp-activity/<thread>` on each turn and tool result; the poll only stats that marker and re-exports when it moved (or every 30s), sharing one cached export across viewers. Factory Droid transcripts resolve from the exact path its hooks report (fallback `~/.factory/sessions/*/<id>.jsonl`); the filter unwraps its Claude-compatible `message` rows and drops TUI-only rows (`visibility: "user_only"`) and `context-*` system reminders. OpenCode is proxied through the live local server recorded by its plugin. Transcript bytes stay on the host and are streamed only over the local forwarded gateway. If Codex resume creates a newer rollout for the same session id, reconnect to resolve the newest file.
+Opens a local WebSocket stream for a live agent transcript. New clients should pass `source`; when omitted for backward compatibility, the gateway tries Claude first, then Codex. Claude transcripts prefer the exact per-session path captured from hook events (including `CLAUDE_CONFIG_DIR` profiles), then fall back to `~/.claude/projects` for older session state. Codex transcripts prefer the exact rollout path captured from hook events, then search `<CODEX_HOME>/sessions` for the session's own Codex home (recorded by its hook, so sessions run under a different `CODEX_HOME` than the daemon's still resolve), the daemon's `$CODEX_HOME` or `~/.codex`, and any other home a Codex hook has reported. Cursor resolves its native `~/.cursor/chats/<workspace>/<conversation-id>/store.db` and streams role-bearing message blobs in insertion order, polling the live SQLite store for appended messages. Grok streams the authoritative ACP `updates.jsonl` reported by its hooks, with a `$GROK_HOME/sessions/<encoded-cwd>/<session-id>/` scan as a fallback for older sessions. Completed Grok `image_gen` results are exposed as lazy ACP image blocks backed by the generated file, so Chat View can render them without terminal graphics support. Pi and OMP transcripts use the exact JSONL path reported by the installed extension, so profiles and custom session locations work without a directory scan. OMP validation understands its v3 fixed-width title slot before the session header. Kimi transcripts resolve through its profile-aware `session_index.jsonl` and stream the main agent's live `wire.jsonl`. Qoder writes Claude-format JSONL, so it reuses the Claude reader: the exact path from its hooks wins, with `$QODER_CONFIG_DIR/projects` or `~/.qoder/projects` as the fallback search root. Devin CLI keeps each session as one ATIF JSON document under `$XDG_DATA_HOME/devin/cli/transcripts/<id>.json` (default `~/.local/share/devin/cli/transcripts`); the gateway reloads it on each poll and converts its steps into Claude-shaped `user`/`assistant` rows (tool calls become `tool_use`, observations `tool_result`), so clients reuse their Claude reducer. GitHub Copilot CLI appends session events to `$COPILOT_HOME/session-state/<id>/events.jsonl` (default `~/.copilot`); the gateway keeps `user.message`, `assistant.message` and `tool.execution_complete` rows and rewrites them into Claude-shaped rows (built-in tools renamed to Read/Edit/Write/Bash/Grep). Amp keeps threads on its servers: the gateway runs `amp threads export <id>` while a stream is open and converts the messages into Claude-shaped rows. The Moshi Amp plugin touches `<state>/amp-activity/<thread>` on each turn and tool result; the poll only stats that marker and re-exports when it moved (or every 30s), sharing one cached export across viewers. Factory Droid transcripts resolve from the exact path its hooks report (fallback `~/.factory/sessions/*/<id>.jsonl`); the filter unwraps its Claude-compatible `message` rows and drops TUI-only rows (`visibility: "user_only"`) and `context-*` system reminders. OpenCode is proxied through the live local server recorded by its plugin. Transcript bytes stay on the host and are streamed only over the local forwarded gateway. If Codex resume creates a newer rollout for the same session id, reconnect to resolve the newest file.
 
 Server messages are JSON objects with `type` (`backlog`, `older`, `append`, `resumed`, `reset`, `subagents`, or `error`), `source`, physical `line` numbers, and raw JSONL rows for client-side rendering. Clients can request older rows with `{"type":"older","beforeLine":123,"limit":50}`.
 
