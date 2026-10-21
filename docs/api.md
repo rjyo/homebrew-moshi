@@ -487,6 +487,16 @@ suppress_push_while_unlocked = false
 # On by default.
 #   moshi-hook set suppress-push-without-mux off
 suppress_push_without_mux = true
+# Install the moshi-visuals skill next to the Claude Code and Codex hooks, at
+# <claude config dir>/skills/moshi-visuals/SKILL.md and
+# <codex home>/skills/moshi-visuals/SKILL.md, so those agents can answer with
+# a ::moshi-visual{...} line the Moshi apps render inline. On by default and
+# applied at once: on writes the skill wherever their global hooks are
+# installed, off removes it. `install --local` never writes it, `uninstall`
+# removes it, and a missing or outdated copy marks the agent stale in the
+# hook status the app shows (Update fixes it).
+#   moshi-hook set inline-visuals off
+inline_visuals = true
 # Periodically `git fetch` the upstream branch of repos shown in workspace
 # summaries and diff sessions, so "behind" counts include commits pushed
 # elsewhere. Off by default: fetching uses your git credentials, and an SSH
