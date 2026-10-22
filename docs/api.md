@@ -557,7 +557,7 @@ allowed_hosts = []
 
 Gateway HTTP is loopback-only and does not require `Authorization`. Clients reach it through SSH local forwarding. Two checks stand in for auth (`internal/localguard`):
 
-- A loopback connection is accepted only from a socket owned by the daemon's user (or root), looked up in the kernel's socket table (Linux `/proc/net/tcp{,6}`, macOS `net.inet.tcp.pcblist_n`; not yet on Windows). sshd's port forward, the web client, the desktop apps and `ssh -W` all connect as that user. `[gateway] allow_other_users = true` turns this off.
+- A loopback connection is accepted only from a socket owned by the daemon's user (or root), looked up in the kernel's socket table (Linux `/proc/net/tcp{,6}`, macOS `net.inet.tcp.pcblist_n`; not yet on Windows). When the table can't name the owner (macOS 27 shows non-root callers only their own sockets), the daemon instead checks through libproc that one of its user's own processes holds the client end, and refuses the connection when none does; in that mode a root-owned client is refused too, since its sockets aren't visible. sshd's port forward, the web client, the desktop apps and `ssh -W` all connect as that user. `[gateway] allow_other_users = true` turns this off.
 - A request is refused with `403` when its `Host` is not loopback or in `allowed_hosts` (DNS rebinding), its `Origin` is present and not a loopback/allowed `http(s)` origin (cross-site pages, `null`), or it has no `Origin` and `Sec-Fetch-Site: cross-site` and is not a GET/HEAD navigation (embedding a gateway URL in a frame stays allowed; the framing page can't read it). `moshi-hook web` with a non-loopback `--listen` also accepts IP-literal Hosts and same-origin pages on them. Proxies in front of a guarded server (`moshi-hook web`, the `/hosts/<h>/` bridge) check the browser request themselves, then forward it with a loopback Host and without `Origin`/`Sec-Fetch-*`. Host/account auth remains limited to daemon-to-Moshi server calls that deliver pushes, usage, approvals, and WebSocket frames.
 
 The HTTP gateway serves diff and bounded control actions for servers surfaced by discovery. Pull-only host inspection is intentionally not exposed here: `GET /v1/capabilities`, `GET /v1/servers`, and `GET /v1/sessions/context` return `404`. Use the SSH preflight CLI commands below instead.
@@ -596,6 +596,7 @@ The first snapshot identifies the hook and its additive API capabilities:
       "events.watch.agent-status",
       "events.license",
       "transcripts.limit",
+      "transcripts.v2",
       "terminal.prompt",
       "terminal.keys",
       "workspaces.live-session",
@@ -967,7 +968,7 @@ diff and history surfaces don't.
 { "diffSessionId": "diff_abc123", "url": "/apps/diff/diff_abc123/", "git": true }
 ```
 
-Diff sessions expire after 15 minutes idle and are served under `/apps/diff/:sessionId/`. Diff payloads are read from the host filesystem and never sent to the Moshi backend.
+Diff sessions are served under `/apps/diff/:sessionId/`. A session idle for 15 minutes is freed, but its URL keeps working: the daemon remembers which root each id it handed out serves (the 256 most recently used, in `diff-sessions.json` in the state dir) and revives the session under the same id on the next request, including after a daemon restart. Starting a session for a remembered root returns its existing id. An id the daemon never handed out, one it has since forgotten, or one whose root no longer exists answers 404; clients should start a new session then. Diff payloads are read from the host filesystem and never sent to the Moshi backend.
 
 `/apps/diff/:sessionId/api/events` is a WebSocket of JSON `{"type": …}`
 messages: `ready` once the watches are installed, `repository` when
@@ -1514,6 +1515,61 @@ Oversized rows are redacted before streaming: long strings are truncated, and in
 The optional `cursor` resumes a previously committed transcript checkpoint. Cursors are opaque, versioned, and bound to the source, session and storage backend. The gateway validates the complete prefix (including its physical row count and byte offset) using SHA-256. An unchanged prefix produces only suffix `append` transactions followed by `resumed`, including when the suffix is empty. Large initial suffixes are committed in transactions of at most 200 physical rows. A changed or truncated prefix produces an ordinary authoritative `backlog`; the client must rebuild its reducer. A file rewrite that does not change its size is detected on reconnect; the live file tailer's equal-size fast path does not detect it immediately.
 
 A `cursor` on an `append` is the **commit marker for the entire burst**, including preceding cursorless fragments. Buffer those fragments and reduce them only after the commit marker arrives. On disconnect, discard uncommitted fragments and resume from the last committed cursor. Never use `totalLines` as a checkpoint: every fragment may report the final total before all rows have arrived. Persist the cursor and corresponding reducer inputs together. `resumed` completes catch-up without changing the oldest loaded boundary or older-page availability. `older` responses never advance the forward cursor. Materialized `backlog` responses carry a cursor; virtual pending rows do not. A cursorless backlog is still authoritative and requires a full refresh. Mutable OpenCode rows can invalidate an earlier prefix, so an active-turn reconnect may legitimately require a full refresh.
+
+### `GET /v2/transcripts?session=<id>&source=<source>[&agent=<agentId>][&limit=<n>][&resume=1]`
+
+WebSocket stream of **reduced chat messages** (capability `transcripts.v2`; design in `docs/internal/transcripts-v2.md`, wire types `gatewayapi.TranscriptV2ServerMessage` / `TranscriptV2ClientMessage`). The daemon runs the transcript reducer (`transcript/`, the Go port of app-ios `lib/transcript`) and streams its output, so clients render messages instead of reducing raw rows. `session`, `source` and `agent` mean the same as for `/v1/transcripts`, and errors before the upgrade are identical (`400` bad session/source/agent, `404` not found, `429` too many streams, `500`). `limit` is the first snapshot's size in **messages** (default 200, max 2000; reconnecting clients ask for what they had loaded). `cursor`, `subagents` and the v1 row `limit` do not apply: Claude/Qoder parent streams always carry the subagents list.
+
+All viewers of one `(source, session, agent)` share one reducer, fed by a single v1 stream the daemon opens to itself in process. It starts with the first viewer and lingers 60 s after the last one leaves, so a reopen is instant. The v1 stream limit (8) counts these shared sessions, not viewers: admission reserves the new session's slot before the upgrade (evicting lingering sessions if needed, `429 too many transcript streams` otherwise), and the session keeps it, reconnects included, until it is released. v2 viewers have their own daemon-wide cap of 32 (`429 too many transcript viewers`).
+
+Server frames all carry `rev`, the shared session's frame counter. It never decreases on a connection, but clients must rely on frame order, not `rev` (treat an equal `rev` as normal). Messages are the TS `TranscriptMessage` JSON (`transcript/transcripttypes.go` tags); `messages` is omitted when empty.
+
+Every message the daemon sends comes with an **etag**: the first 16 characters of the unpadded base64url SHA-256 of that message's JSON bytes as sent. It is in `etags` (parallel to `messages`) on `snapshot` and `older`, and in `upsert[].etag` on `patch` and `resumed`. The marshal is deterministic, so unchanged content keeps its etag across daemon restarts; clients persist it with the message for `resume`.
+
+```jsonc
+// first frame, and again after any reset: the newest `limit` messages, oldest first
+{"type":"snapshot","rev":41,"status":"live","messages":[…],"etags":["…"],"hasMore":true,
+ "modelName":"opus","subagents":[…],"taskCatalog":{…}}
+// instead of the first snapshot, when a resume=1 client's window aligns (see below)
+{"type":"resumed","rev":41,"remove":["id"],"upsert":[{"after":"id","message":{…},"etag":"…"}],
+ "status":"live","hasMore":true,"modelName":"opus","subagents":[…],"taskCatalog":{…}}
+// at most one per 100 ms: apply `remove`, then each `upsert` in order
+{"type":"patch","rev":42,"remove":["id"],"upsert":[{"after":"id-or-null","message":{…},"etag":"…"}],
+ "modelName":"opus","subagents":[…],"taskCatalog":{…},"status":"live","error":"…"}
+// reply to a client `older`
+{"type":"older","rev":43,"messages":[…],"etags":["…"],"hasMore":false}
+// the shared stream failed; a patch with status "error" follows
+{"type":"error","rev":44,"error":"…"}
+```
+
+- `snapshot` always carries `status`, `hasMore` and `subagents` (`[]` for none), and `taskCatalog` for Claude-family sources; `modelName` is absent (read it as null) when there is none, `error` present while `status` is `error`. It replaces everything the client holds. The first one waits up to 1 s for the shared session's backlog, so it is normally `live` with history rather than an empty `connecting` frame.
+- `patch` covers only the client's loaded window (its oldest loaded message to the end). Upserting a message the client holds replaces it, moving it right after `after` (`null` = first in the window); a new message is inserted there. `after` is always `null` or an id in the client's window once the preceding upserts of the same patch are applied; the daemon tracks each viewer's window and never anchors outside it. A `remove` id the client no longer has (it hid a rewound message optimistically) is ignored. `modelName`, `subagents`, `taskCatalog` and `status` appear only when they changed; `modelName: ""` clears the name. A message is re-sent only when its JSON changed, so unchanged rows keep their identity.
+- If the window loses every message (a rewind or rewrite removed them) the client gets a fresh `snapshot` instead of a patch. So does every client after the source resets (a rewritten file, a client `reset`, or the daemon following a new transcript file, below), and a client told `hasMore: false` once older history appears (for example a `connecting` snapshot sent before a slow backlog arrived): patches never carry `hasMore`.
+- `older` is the page right before the client's oldest message, oldest first; prepend it. When the shared reducer holds too few messages, the daemon pages its v1 stream and answers once enough rows arrived. `hasMore` is whether anything remains before it. Send one `older` at a time: requests are answered in order as the socket drains, more than 4 pending closes the socket (policy violation), and a socket that stops reading for 15 s is closed.
+
+- `taskCatalog` (Claude, Qoder and the other sources the Claude reducer renders) is the reducer's durable task list, app-ios `ClaudeTaskCatalog` with its Maps as arrays in insertion order: `{"revision":7,"entries":[{"id":"1","subject":"…","description":"…","status":"in_progress","creationLine":1,"createMessageId":"a1:1","statusEvents":[{"key":"a4:1","messageId":"a4:1","line":6,"status":"in_progress"}],"order":1}]}`. `creationLine`, `createMessageId` and `order` are `null` while the entry is known only from a `TaskUpdate` (its `TaskCreate` page is not loaded; TS `order` is then Infinity and sorts last). A patch carries the whole catalog whenever it changed, including a status change, which does not bump `revision`.
+
+**Rewinds** (Claude-format sources) are the daemon's own state per `(source, session, agent)`: Claude writes the fork only with the next prompt, so until then the daemon hides the rewound prompt and everything after it for every viewer. It keeps the rewound rows in its state dir (at most 64 per transcript), so they survive linger expiry, resets and daemon restarts, and drops them when the session's transcript file changes. A `messageId` the daemon has not loaded (from a client's cache) is remembered by its row (the id up to its first `:`) and hidden once that row loads.
+
+**Following the transcript.** Clients need no reset flow for `/clear`, a Codex resume or any other change of a session's transcript file: when a hook event's state names a different file for the session (for example Codex's exact rollout path), every shared session of that `(source, session)` re-resolves within about half a second (one hook burst, one check), and if the file moved it resets as if a client had sent `reset`: every viewer gets a new snapshot of the new file. An unchanged file causes nothing. Claude-format sources already follow relocations inside the stream, and sources without a transcript file have nothing to follow. A client `reset` keeps working.
+
+**Resume.** A client that persisted its messages connects with `resume=1` and sends, as its first frame within 2 s, `{"type":"resume","window":[{"id":"…","etag":"…"},…]}`: its cached server messages, oldest first, local echoes excluded, at most 2000. The daemon aligns that window at its oldest id (paging the shared session back for up to 2 s when that id is not loaded yet) and answers `resumed`: a patch against the client's window (ids that are gone are removed, messages whose etag differs or is missing are re-sent, new ones are inserted, `after` anchors inside the window) plus every field a snapshot carries. After it the connection continues with ordinary patches. When the window cannot be aligned (its oldest id is unknown, paging cannot reach it, it is empty, too large or has duplicate ids) the answer is an ordinary `snapshot`; so it is when no resume frame arrives within 2 s, or the first frame is something else (which is then handled normally).
+
+Client frames:
+
+```jsonc
+{"type":"resume","window":[{"id":"…","etag":"…"}]} // first frame of a resume=1 connection only
+{"type":"ping"}                     // keepalive; ignored
+{"type":"older","limit":75}         // limit 0 = 75; max 2000
+{"type":"rewind","messageId":"…"}   // Claude /rewind: hide this prompt and after, for every viewer;
+                                    // durable (survives reconnects and daemon restarts); an id not loaded
+                                    // yet is hidden when its page loads; a no-op for engines that cannot rewind
+{"type":"reset"}                    // rebuild the shared session (re-resolving the source file, e.g. the newest
+                                    // Codex rollout after /clear); every viewer, the sender included,
+                                    // gets a snapshot after it (drop anything earlier)
+```
+
+Client frames are at most 256 KB. Frames of an unknown type, with a `messageId` over 512 bytes, or a `resume` that is not a resume=1 connection's first frame are ignored; `window` is read only from that first frame, and one longer than 2000 entries makes it a plain connect. Local echo (the optimistic prompt bubble) stays on the client: drop it when an upserted `user-text` with the same text arrives. On disconnect, reconnect with backoff; the new `snapshot` replaces the window, or `resume=1` patches the cached one (the daemon keeps the v1 cursor, so there is no client cursor).
 
 ### `GET /v1/transcripts/blob?session=<id>&line=<n>[&block=<i>][&source=claude|codex|cursor|grok|opencode|hermes|pi|omp|omo|kimi|antigravity|qoder|devin|copilot|amp|droid|jcode|goose][&agent=<agentId>]`
 
