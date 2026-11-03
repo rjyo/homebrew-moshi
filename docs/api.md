@@ -551,6 +551,14 @@ allow_other_users = false
 # localhost; this is not authentication. Prefer the CLI:
 #   moshi-hook set allowed-hosts moshi.example.com
 allowed_hosts = []
+
+[rex]
+# The Rex server the daemon (and `moshi-hook rex attach`) talks to when its
+# environment has no REX_SERVER — a brew or systemd service never sees the
+# shell's. A socket path or Rex's unix:// address; "default" is Rex.app's
+# own server (the per-user one on Linux). Read within a few seconds.
+#   moshi-hook set rex-server ~/rex/server.sock
+server = "default"
 ```
 
 4. Default `127.0.0.1:24543`
@@ -573,6 +581,7 @@ See `docs/design/client-mode.md` for the full design. Bare `moshi` serves the em
 - `POST /v1/herdr/sidebar?mode=hidden|compact[&muxSession=<name>]` applies that collapsed rail mode to this daemon's own Herdr config and reloads the session (204; 422 with `error` on failure). Remote gateways call it over the SSH bridge before a remote attach.
 - `GET /v1/pty?mux=tmux:<server>[&muxSession=…][&pane=…]` attaches to a non-default tmux server — pass the `GET /v1/muxes` id as `mux`. Locally the server must be one the daemon lists (it attaches with `-S <socket>`; unknown servers are `422`); with `host=` the remote tmux resolves it (`-L <name>` or `-S <path>`).
 - `GET /v1/pty?mux=…&host=<name>` runs the multiplexer attach through `ssh -t <name>` on a locally-owned PTY; terminal bytes never transit the remote gateway.
+- `GET /v1/pty/command?mux=…[&muxSession=…][&hideSidebar=…]` answers the argv `/v1/pty` would run on this machine for the same query, `{"argv": ["/opt/homebrew/bin/tmux", "attach", "-t", "main"]}`, with the binary's absolute path, for a client that runs it in a terminal of its own here (an osewa session; capability `pty.command`). herdr's sidebar is applied as for an attach. `host=`, `pane=` and `snapshot=` have no command and are `400`; an unknown mux is `400` as for `/v1/pty`.
 - `POST /v1/hosts/forward` `{"host": "<name>", "ports": [3000, …]}` opens same-port ssh local forwards (`127.0.0.1:<p>` → remote `127.0.0.1:<p>`, max 16 per request) on the host's ControlMaster, so the client can load a remote dev server or simulator preview at `http://localhost:<p>` per the same-port doctrine (no path-prefix reverse proxy — see Transport under `/events`). Idempotent per live master; forwards die with it (ControlPersist reaps an idle master after 10 minutes) and the next request re-establishes them. Unsafe host names are `400`, ssh failures `502` with the last stderr line. A local port collision is detected before the mux request and surfaces as a plain-language `502` (a leftover forward held by the live master is cancelled and re-added instead); the URL is never rewritten to a different port.
 - `GET /v1/hosts/forwards` lists the live tunnels on this machine as `{"forwards": [{"host", "port", "pid"?}]}` — daemon bookkeeping (pruned when the local port has come free) merged with every discovered ssh-owned listener (hand-rolled `ssh -L`, or daemon forwards a restart forgot; `host` is parsed best-effort from the ssh command line, `pid` is the listener's). `POST /v1/hosts/unforward` `{"host", "port", "pid"?}` tears one down: a bridgeable host gets a mux cancel; otherwise the pid — verified to still be an ssh listener on that port — is terminated. Idempotent, judged by the local port coming free rather than ssh's unreliable `-O cancel` exit code. Both act on the LOCAL daemon only; tunnels are invisible to the remote gateway. Discovery never lists ssh-owned listeners as dev servers — a tunnel answers probes with the remote end's content and belongs in the tunnels list.
 
@@ -600,13 +609,18 @@ The first snapshot identifies the hook and its additive API capabilities:
       "terminal.prompt",
       "terminal.keys",
       "workspaces.live-session",
+      "workspaces.layout",
+      "workspaces.layout.focus",
+      "workspaces.cycle",
       "approvals.answer",
       "events.watch.usage",
       "events.doctor",
       "update.check",
       "update.apply",
       "settings",
-      "restart"
+      "restart",
+      "osewa.enroll",
+      "osewa.port"
     ]
   }
 }
@@ -1162,6 +1176,132 @@ without a connection open:
 }
 ```
 
+### `GET /v1/osewa/status`, `POST /v1/osewa/enroll`, `POST /v1/osewa/port`
+
+Prepare this host for [osewa](https://osewa.dev) terminals (capabilities
+`osewa.enroll` and `osewa.port`). The app opens and drives the terminals
+itself over osewa's own port; these calls only check the host, set the port
+and enroll the phone's device key. osewa itself is the user's to install,
+as mosh-server is; the daemon never downloads it. Field names are osewa's (snake_case): `build` is exactly what
+`osewa version --json` and the app's `osewa_build_info()` print, and two
+builds interoperate iff `version`, `ghostty` and `snapshot_version` match.
+
+The daemon runs `MOSHI_OSEWA_BIN` when set, else the `osewa` beside its own
+executable, else `~/.local/bin/osewa`, else the first on `PATH`. osewa runs with a cleaned
+environment (home, user, shell, `PATH`, locale, XDG and `OSEWA_*`
+directories, `TERM=xterm-256color`), since a server it starts hands that
+environment to every shell it opens.
+
+```jsonc
+// GET /v1/osewa/status
+{
+  "installed": true,
+  "path": "/home/u/.local/bin/osewa",    // "" when not installed
+  "build": {                             // null when not installed, or when
+    "osewa": "0.1.0",                    // this osewa predates
+    "version": 0,                        // `version --json`
+    "ghostty": "83fb9562…",
+    "snapshot_version": 1
+  },
+  "running": true,                       // a server holds osewa's server.pid lock
+  "port": 7322,                          // the configured port
+  "platform": "linux-amd64"              // "" when osewa has no build for it
+}
+```
+
+```jsonc
+// POST /v1/osewa/enroll
+{
+  "name": "iPhone",                             // 1-64 bytes, no control characters
+  "key": "<base64 Ed25519 public key>",
+  "build": { "osewa": "0.1.0", "version": 0, "ghostty": "83fb9562…", "snapshot_version": 1 }
+}
+// 200
+{
+  "server_key": "<base64 Ed25519 public key>",
+  "port": 7322,
+  "version": 0,                          // osewa wire protocol
+  "build": { … }                         // the host's, or null if unknown
+}
+```
+
+Enroll runs `osewa enroll --port <port>` with `{"name","key"}` on stdin and
+takes the last JSON line of its output that carries a `server_key`.
+Enrolling the same key or name again replaces that device's entry, so a
+retry is safe. If no server is running enroll then runs
+`osewa service install --listen :<port>` (launchd or a systemd user unit,
+which survives reboots) and, if that leaves none running,
+`osewa server --daemon --listen :<port>`. A running server of the binary
+in use, on the configured port, rereads its devices on every connection
+and is left alone; one running another build (another path with other
+content, a replaced or deleted file, or on macOS a binary changed after it
+started) or listening on another port (its command line's `-listen` or
+`--listen`, read as osewa's flags are; none is osewa's default, 7322) is
+restarted: `osewa service restart` when the
+installed service already runs this binary on this port, else
+`osewa service install --listen :<port>`, else it is stopped (SIGTERM,
+then waiting for its lock) and started with `--daemon --listen :<port>`.
+No restart falls back to osewa's default port, and the port is reread
+once the request holds the osewa lock, so a request that waited out a port
+change uses the new one (an unreadable `[osewa] port` is a `500`, never
+7322). A login service the daemon didn't install (no record of it, or the
+service file no longer runs the binary it was installed with) is the
+user's, with their own flags (the plist is read as launchd does, `Program`
+before `ProgramArguments[0]`, comments ignored; the unit's one effective
+`ExecStart=` under `[Service]`, with drop-ins that leave it alone or point
+it back at the same binary; anything unclear, a duplicated key, a prefixed
+or continued `ExecStart`, `ExecStartPre`/`ExecStartPost`, or a drop-in that
+otherwise changes the command, counts as the user's): it is restarted in place only when it
+already runs the binary in use on the configured port, and never
+rewritten, stopped or shadowed by a `--daemon`. Anything more is
+`409 {"error":"service_conflict","path":"<unit or plist>","message":"…"}`.
+When the daemon's
+environment overrides osewa's directories (`OSEWA_CONFIG_DIR`,
+`OSEWA_RUN_DIR`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, a non-standard
+`XDG_RUNTIME_DIR`) no service is used, since it wouldn't carry them: only
+the `--daemon` way. Every osewa call runs in its own process group with a
+timeout, killed whole on expiry (a detached server has its own session and
+survives); the whole request is bounded at 60 seconds, including the wait
+behind another enroll, port change or uninstall. Those all hold one lock,
+an flock on `<state dir>/osewa.lock` (the state dir is
+`~/Library/Application Support/Moshi` on macOS, `$XDG_STATE_HOME/moshi` or
+`~/.local/state/moshi` on Linux, or `MOSHI_STATE_DIR`), so the daemon and a `moshi-hook` command never
+interleave.
+
+Errors: `404 {"error":"not_installed"}` when the host has no osewa;
+`409 {"error":"incompatible","build":{…host's…}}` when the host's build
+can't talk to the request's `build` (nothing is enrolled);
+`409 {"error":"service_conflict",…}` as above; `400` for a bad body, name,
+key or build; `500 {"error":"<message>"}` when osewa fails or
+no server could be started. A host whose build can't be read (an osewa
+without `version --json`) is not refused; `build` is then `null`.
+
+```jsonc
+// POST /v1/osewa/port
+{ "port": 7400 }                         // 1024-65535, else 400
+// 200: the status, as GET /v1/osewa/status
+```
+
+Port saves `port` under `[osewa]` in config.toml (`moshi-hook set
+osewa-port` does the same from a shell) and moves osewa onto it: a running
+server, kept on the binary it runs, is restarted as enroll restarts one
+listening on another port; with none running, a service the daemon
+installed is reinstalled; otherwise the port is used at the next start.
+Saving and moving are one step under the osewa lock. When the user's own
+service would have to move, nothing is saved and the answer is
+`409 service_conflict`. Sessions live in their holders and survive the restart
+(but see the systemd caveat below). Errors as enroll's.
+
+`moshi-hook uninstall` (all agents, not `--target` or `--local`) also
+removes what the daemon set up of osewa: the service, when the daemon ran
+`service install` itself and the service file still runs the binary it
+ran (`osewa service uninstall`), then `<state dir>/osewa`, which holds the
+record of it. The osewa binary, a service the user installed and its
+server are left alone. On Linux, stopping or restarting the systemd
+unit (`service uninstall`, `service restart`) ends the unit's whole cgroup,
+the sessions' holders with it; launchd and `--daemon` servers leave holders
+running.
+
 ### `GET /v1/settings`, `POST /v1/settings`
 
 The daemon's `moshi-hook set` settings (capability `settings`), for the app's
@@ -1216,7 +1356,7 @@ form to replay, so no screen-content verification happens — the text lands in
 whatever state the agent's composer is in.
 
 The session-lookup query params are optional here. With them (`ssh-connection`,
-`mosh-port`[+`mosh-host`], or `et-client-id`), the caller's terminal is
+`mosh-port`[+`mosh-host`], `et-client-id`, or `osewa-session`), the caller's terminal is
 resolved live exactly like `/v1/questions/answer`, and a terminal that no
 longer runs the expected agent or session returns `409` without injecting
 anything. Without them — a local loopback client has no SSH session — the pane
@@ -1249,6 +1389,22 @@ empty `text`. The JSON body limit remains 1 MiB. Invalid blocks are rejected
 before injection. Do not automatically retry failed submissions: earlier
 blocks may already be in the native composer. Older daemons reject these new
 fields before writing any input.
+
+`"sendNow": true` submits with the agent's send-now key instead of Enter, so
+a message typed while the agent works goes to the model at once (with any
+messages already waiting in its queue) instead of after the turn. With no
+`text`, `pastedText` or `images`, it only presses the key, sending the waiting
+messages. Daemons that take it advertise the `prompt.send-now` capability;
+older ones reject the field before writing any input. Only Claude Code has a
+send-now key: the daemon sends its `ctrl+x ctrl+s` chord (bound to
+`chat:sendNow` beside `ctrl+enter`, which tmux passes on only with extended
+keys). Other agents answer `400` before any input. An open question (recorded,
+or Claude's form on screen) answers `409` before any input, digit or not: the
+agent waits on the answer, and a digit would pick an option.
+
+```json
+{ "source": "claude", "sessionId": "agent-session-id", "text": "use the v2 API instead", "sendNow": true }
+```
 
 For an agent with no observable session ID yet (for example Codex after
 `/new`), send `{ "source": "codex", "pane": "<pane-id>", "text": "hello" }`.
@@ -1338,7 +1494,12 @@ selectable, the PTY attach `herdr --session <name>` starts it) plus tmux
 when installed: the default server as `tmux`, and each other tmux server that
 has sessions as `tmux:<server>`. `<server>` is the socket name for servers in
 tmux's socket directory (what `tmux -L <name>` creates) or the socket path for
-a `tmux_sockets` entry kept elsewhere; a server with no sessions is omitted. `active` marks the option the default loopback resolution
+a `tmux_sockets` entry kept elsewhere; a server with no sessions is omitted.
+A driver mux with a workspace tree is listed by its kind (`rex`, `hc`) while
+its default server answers, and each other herdr-core core that answers
+(`HC_SESSION=work hc …`) as `hc:<session>` with `session` set; `/v1/pty`
+attaches one with `mux=hc:<session>` (or `mux=hc&muxSession=<session>`),
+running `hc` with that `HC_SESSION`. `active` marks the option the default loopback resolution
 currently picks; `id` is exactly what clients pass back as the `mux`
 selection. Through the `/hosts/<name>/` bridge the list describes that
 remote machine.
@@ -1349,7 +1510,9 @@ remote machine.
     { "id": "herdr:default", "kind": "herdr", "session": "default", "running": true, "active": true },
     { "id": "herdr:ztest", "kind": "herdr", "session": "ztest", "running": false },
     { "id": "tmux", "kind": "tmux", "running": true },  // running: the server has sessions
-    { "id": "tmux:agents", "kind": "tmux", "server": "agents", "running": true }
+    { "id": "tmux:agents", "kind": "tmux", "server": "agents", "running": true },
+    { "id": "hc", "kind": "hc", "running": true },
+    { "id": "hc:work", "kind": "hc", "session": "work", "running": true }
   ]
 }
 ```
@@ -1361,8 +1524,7 @@ data structure behind the apps' Jump To menu. Both herdr (workspace → tab)
 and tmux (session → window) collapse onto one shape; herdr additionally
 reports a live per-node agent status and per-tab agent kind.
 
-With session-lookup params (`ssh-connection`, `mosh-port`[+`mosh-host`], or
-`et-client-id`) the tree describes the mux the caller's terminal runs inside,
+With session-lookup params (`ssh-connection`, `mosh-port`[+`mosh-host`], `et-client-id`, or `osewa-session`) the tree describes the mux the caller's terminal runs inside,
 and `focused` marks the caller's current branch. Without them — a loopback
 desktop client has no terminal session — the mux resolves to herdr when its
 server responds, or the default tmux server otherwise, and no group is marked
@@ -1477,6 +1639,53 @@ third level. It echoes the requested target so
 a late response can be matched to its row. Same session-lookup rules and
 loopback fallback as `/v1/workspaces`.
 
+### `GET /v1/workspaces/layout?<session lookup>`
+
+Capability `workspaces.layout`. The panes of the window the session's terminal
+shows now, for the apps' pane minimap after a pane switch. Kept cheap (no agent
+or process detail) so clients can read it after every switch. Requires the
+session lookup (no loopback form).
+
+```json
+{"kind":"tmux","units":"cells","panes":[
+  {"id":"%1","focused":false,"rect":{"x":0,"y":0,"width":80,"height":48}},
+  {"id":"%2","focused":true,"rect":{"x":81,"y":0,"width":79,"height":48}}]}
+```
+
+`units` says what `rect` measures: `cells` (tmux, herdr, and Rex once a pane's
+grid size scales its layout tree's fractions) or `fraction` of the window (Rex
+when no pane answers a size). herdr-core reports no geometry, so its panes
+carry no `rect` (and the layout no `units`): they come in the mux's order and
+clients lay them out evenly. Zellij answers 422.
+
+### `POST /v1/workspaces/layout/focus?<session lookup>`
+
+Capability `workspaces.layout.focus`. Focuses one pane of the window the
+session's terminal shows, by an `id` from its layout (the minimap's tap):
+tmux `select-pane`, herdr `pane.focus`, and the driver's focus for Rex and
+herdr-core (only the asking terminal's view follows). Answers the layout after
+the move. A pane outside the shown window is 404; zellij is 422.
+
+```json
+{"paneId":"%2"}
+```
+
+```json
+{"ok":true,"layout":{"kind":"tmux","units":"cells","panes":[…]}}
+```
+
+### `POST /v1/workspaces/cycle?<session lookup>`
+
+Capability `workspaces.cycle`. Moves the session's terminal to the next or
+previous pane, tab or workspace of a driver mux (Rex, herdr-core, …), which
+have no prefix keys a client could send. Body
+`{"level":"pane"|"tab"|"workspace","direction":"next"|"previous"}`; the order
+is the tree's and wraps at the ends. The reply carries the shown window's
+layout (same shape as `/v1/workspaces/layout`) so a minimap needs no second
+read: `{"ok":true,"moved":true,"layout":{…}}`. `moved` is false for a lone
+pane, tab or workspace. tmux, herdr and zellij answer 422: clients send those
+muxes the user's own key bindings.
+
 ### `POST /v1/workspaces/focus[?<session lookup>]`
 
 Focuses a workspace/tab/pane (herdr) or session/window (tmux) in the caller's
@@ -1589,7 +1798,7 @@ Terminates a discovered local HTTP server. The daemon re-runs server discovery a
 
 ### `POST /v1/paste[?<session lookup>]`
 
-Injects an image into the caller's multiplexer pane: the tmux pane, the focused herdr pane, or the zellij pane (falling back to the session's focused pane when the context carries no pane id, since zellij focused-pane actions silently no-op without an attached client). Takes the same session-lookup query params as `/events` (`ssh-connection`, `mosh-port`[+`mosh-host`], or `et-client-id`); the pane is resolved live on the host, so the app never passes (possibly stale) pane ids. Loopback callers may omit the lookup and pass `source` + `sessionId` in the body instead; the pane then comes from the recorded agent state (tmux and herdr). Bodies are capped at 64 MB.
+Injects an image into the caller's multiplexer pane: the tmux pane, the focused herdr pane, or the zellij pane (falling back to the session's focused pane when the context carries no pane id, since zellij focused-pane actions silently no-op without an attached client). Takes the same session-lookup query params as `/events` (`ssh-connection`, `mosh-port`[+`mosh-host`], `et-client-id`, or `osewa-session`); the pane is resolved live on the host, so the app never passes (possibly stale) pane ids. Loopback callers may omit the lookup and pass `source` + `sessionId` in the body instead; the pane then comes from the recorded agent state (tmux and herdr). Bodies are capped at 64 MB.
 
 ```jsonc
 // request (with session lookup)
@@ -1621,7 +1830,7 @@ Moshi disables tmux pane capture before execution on affected Enterprise Linux 1
 
 Moshi clients use SSH exec/preflight for host inspection commands. These commands print JSON to stdout and do not require host pairing or a bearer token. There is no separate capabilities manifest; clients should run the specific command they need and handle command failure as unsupported/unavailable.
 
-### `moshi-hook servers [--ssh-connection "..."] [--mosh-port <p> [--mosh-host <ip>]] [--et-client-id <id>|--et]`
+### `moshi-hook servers [--ssh-connection "..."] [--mosh-port <p> [--mosh-host <ip>]] [--et-client-id <id>|--et] [--osewa-session <id>]`
 
 Discovers listening loopback HTTP services and returns each origin as the host sees it.
 
@@ -1652,9 +1861,9 @@ Transport: **same-port forwarding only.** Clients are expected to open an SSH lo
 
 Terminates a discovered server after re-validating that the PID and port still belong to a surfaced HTTP server. The JSON response matches `POST /v1/servers/kill`.
 
-### `moshi-hook context [--ssh-connection "..."] [--mosh-port <p> [--mosh-host <ip>]] [--et-client-id <id>|--et]`
+### `moshi-hook context [--ssh-connection "..."] [--mosh-port <p> [--mosh-host <ip>]] [--et-client-id <id>|--et] [--osewa-session <id>]`
 
-Returns the current terminal state for an iOS-owned SSH, Mosh, or Eternal Terminal session: tmux pane (if the user has tmux attached on the session's TTY), zellij pane when detected from the shell environment, or bare shell. Tmux detection is live — attaching or detaching tmux changes the next response immediately.
+Returns the current terminal state for an iOS-owned SSH, Mosh, Eternal Terminal, or osewa session: tmux pane (if the user has tmux attached on the session's TTY), zellij pane when detected from the shell environment, or bare shell. Tmux detection is live — attaching or detaching tmux changes the next response immediately.
 
 Remote-session flags (set exactly one identifier; `--mosh-host` only applies with `--mosh-port`):
 
@@ -1665,6 +1874,7 @@ Remote-session flags (set exactly one identifier; `--mosh-host` only applies wit
 | `mosh-host` | Optional disambiguation hint for the server-side bind address. It is only needed when two mosh-servers share the same port on different interfaces (e.g. one over Tailscale, one over LAN). If the hint does not match but the port has only one local binding, the daemon uses that binding. Without a matching hint, ambiguous lookups fail explicitly rather than returning a guessed session. |
 | `et-client-id` | Eternal Terminal's 16-character client id from the ET handshake. ET uses a shared `etserver`, so the daemon resolves the per-session `etterminal` process by client id. |
 | `et` | Eternal Terminal fallback for manual smoke tests. Only succeeds when exactly one `etterminal` process is visible; otherwise use `et-client-id`. |
+| `osewa-session` | The osewa session id, as the app persists it from osewa's `{"type":"session","id":"<hex>"}` event (exactly 32 lowercase hex digits, as osewa validates it). Each osewa session runs in its own `osewa holder --id <id> … -- <argv>` process, whose child is the session's shell. Gateway query params take it as `session=osewa&osewaSession=<id>` (aliases `osewaSessionId`, `osewa-session`) or `session=osewa:<id>`. |
 
 Tmux response:
 
@@ -1737,7 +1947,7 @@ Shell response (no multiplexer detected):
 }
 ```
 
-Resolution: the daemon finds the session's login shell (env-walk for SSH, UDP-port-owner for Mosh, `etterminal` child shell for ET), reads its controlling TTY, and asks `tmux list-clients` whether anything is attached. If yes, returns that session's active pane via `tmux display-message`. If no, reads the shell's cwd directly (`/proc/<pid>/cwd` on Linux, `lsof -d cwd` on macOS) and resolves Git state.
+Resolution: the daemon finds the session's login shell (env-walk for SSH, UDP-port-owner for Mosh, `etterminal` child shell for ET, the child of the session's `osewa holder` for osewa), reads its controlling TTY, and asks `tmux list-clients` whether anything is attached. If yes, returns that session's active pane via `tmux display-message`. If no, reads the shell's cwd directly (`/proc/<pid>/cwd` on Linux, `lsof -d cwd` on macOS) and resolves Git state.
 
 ### `moshi-hook cwd-list --json`
 
