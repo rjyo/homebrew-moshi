@@ -452,9 +452,11 @@ listen = "127.0.0.1:24543"
 # default; set false to opt out. Prefer the CLI over hand-editing:
 #   moshi-hook set always-on-discovery off
 always_on_discovery = true
-# Background usage collection polls Claude/Codex/Kimi/Grok/Antigravity
-# rate-limit APIs and uploads snapshots to Moshi. On by default; set false to
-# opt out, or set a duration (minimum 1m) through the same CLI setting:
+# Background usage collection calls the Claude/Codex/Kimi/Grok/Antigravity
+# account APIs about once a minute (default 1m) with the user's signed-in
+# credentials to show rate limits in Moshi, and uploads the snapshots. On by
+# default; set false to opt out, or set a duration (minimum 1m) through the
+# same CLI setting:
 #   moshi-hook set usage-collection off
 #   moshi-hook set usage-collection 5m
 # Off also stops the daemon from looking up which agent account fired each
@@ -620,7 +622,8 @@ The first snapshot identifies the hook and its additive API capabilities:
       "settings",
       "restart",
       "osewa.enroll",
-      "osewa.port"
+      "osewa.port",
+      "osewa.reconcile"
     ]
   }
 }
@@ -757,6 +760,12 @@ hide their usage UI. The list replaces the previous one:
     "windows": [ { "label": "5h", "usedPercentage": 42, "resetsAt": "2026-09-25T06:00:00Z" } ]
 } ] }
 ```
+
+A `pendingPrompt` question option is `{label, description, preview?}`.
+`preview` (Claude `AskUserQuestion`, OMP `ask`) is the markdown Claude draws
+monospaced beside the choices — a mockup, snippet or draft — capped at 8 KiB
+and ending in `…` when cut; a question with any previews also has
+`hasPreview: true`.
 
 `pendingApproval` is the live tool-approval interaction from the daemon's TUI
 bridge — the same verified prompt the phone inbox sees — so Chat View can
@@ -1176,7 +1185,7 @@ without a connection open:
 }
 ```
 
-### `GET /v1/osewa/status`, `POST /v1/osewa/enroll`, `POST /v1/osewa/port`
+### `GET /v1/osewa/status`, `POST /v1/osewa/enroll`, `POST /v1/osewa/port`, `POST /v1/osewa/reconcile`
 
 Prepare this host for [osewa](https://osewa.dev) terminals (capabilities
 `osewa.enroll` and `osewa.port`). The app opens and drives the terminals
@@ -1291,6 +1300,22 @@ Saving and moving are one step under the osewa lock. When the user's own
 service would have to move, nothing is saved and the answer is
 `409 service_conflict`. Sessions live in their holders and survive the restart
 (but see the systemd caveat below). Errors as enroll's.
+
+```jsonc
+// POST /v1/osewa/reconcile (capability osewa.reconcile)
+{ "creator": "moshi-ios-…", "keep": ["<card key>", …] }  // creator: the app's osewa client_id
+// 200: the sessions it ended
+{ "sessions": [{ "id": "…", "tag": "<card key>", "creator": "moshi-ios-…", "created": 1793450000, "exited": false }] }
+```
+
+Reconcile ends the sessions `creator` started with a tag (an app card's
+key) that isn't in `keep` (at most 1024), by running
+`osewa local reconcile` with the body on stdin: no osewa server or enrolled
+device is needed, so it works when the phone's osewa link doesn't.
+Untagged sessions, other clients' and ones under 2 minutes old stay. It
+takes no lock and is bounded at 20 seconds. Errors: `400` for a bad body,
+creator or too many tags, `404 not_installed`, `501 {"error":"unsupported"}`
+when the host's osewa predates `osewa local`, `500` when osewa fails.
 
 `moshi-hook uninstall` (all agents, not `--target` or `--local`) also
 removes what the daemon set up of osewa: the service, when the daemon ran
@@ -1713,7 +1738,7 @@ Server messages are JSON objects with `type` (`backlog`, `older`, `append`, `res
    "startedAt":"2026-10-08T06:08:50.936Z","updatedAt":"2026-10-08T06:15:34.991Z"}]}
 ```
 
-Each message is the full list and replaces the previous one; an absent `subagents` field means none. It is independent of row framing: it carries no cursor, may arrive before the `append` that caused it, and `reset`/`backlog` do not clear it. `toolUseId` matches the parent's `Agent`/`Task` `tool_use` block, so Chat View can attach the subagent to that card. `teammate` marks in-process team members. `status` is `running`, `idle` (a teammate whose last turn ended, read from its transcript tail, or quiet for a minute when the tail can't tell; teammates wait on a mailbox and never report completion), or the parent's last `<task-notification>` / tool-result outcome: `completed`, `failed`, `killed`, or `stopped`. A finished agent that writes again (resumed by `SendMessage`) goes back to `running`. `hidden: true` mirrors Claude Code's own agent list, which drops an agent 30 s after it goes idle or finishes: leave it out of the tab strip but keep it reachable (an already-open tab, a switcher). It is omitted while false, so older daemons show everything. The daemon derives all of this from the whole parent file plus `subagents/*.meta.json`, so it covers agents spawned before the loaded page. The layout is internal to Claude Code: when it is missing, the list is empty, never an error. Without `subagents=1` the stream is unchanged.
+Each message is the full list and replaces the previous one; an absent `subagents` field means none. It is independent of row framing: it carries no cursor, may arrive before the `append` that caused it, and `reset`/`backlog` do not clear it. `toolUseId` matches the parent's `Agent`/`Task` `tool_use` block, so Chat View can attach the subagent to that card. `teammate` marks in-process team members. `status` is `running`, `idle` (a teammate whose last turn ended, read from its transcript tail, or quiet for a minute when the tail can't tell; teammates wait on a mailbox and never report completion), or the parent's last `<task-notification>` / tool-result outcome: `completed`, `failed`, `killed`, or `stopped`. A finished agent that writes again (resumed by `SendMessage`) goes back to `running` until a new outcome arrives or its transcript ends on a final reply; an agent whose transcript ends on a final reply counts as `completed` (an interrupt as `stopped`, an API error as `failed`) even if the parent never reported it. `hidden: true` mirrors Claude Code's own agent list, which drops an agent 30 s after it goes idle or finishes: leave it out of the tab strip but keep it reachable (an already-open tab, a switcher). It is omitted while false, so older daemons show everything. The daemon derives all of this from the whole parent file plus `subagents/*.meta.json`, so it covers agents spawned before the loaded page. The layout is internal to Claude Code: when it is missing, the list is empty, never an error. Without `subagents=1` the stream is unchanged.
 
 `agent=<agentId>` opens that subagent's own transcript instead of the parent's, with the same protocol (`limit`, `cursor`, `older`, Claude row filter). Its rows carry `isSidechain: true`; forks begin with a `fork-context-ref` row pointing at the parent context. Cursors are bound to the agent, so a parent cursor falls back to a full `backlog`. An invalid id, or `agent` on a source without subagents, is `400`; an unknown agent is `404`. `/v1/transcripts/blob` accepts the same `agent` parameter for images in subagent rows.
 
