@@ -75,6 +75,27 @@ Before its first pane capture, Moshi checks the installed tmux RPM. It disables 
 
 Do not assume a normal package upgrade has removed the downstream patch. Until your distribution publishes a complete fix, the practical workaround is to remove the affected RPM and install an upstream tmux build (3.5a is known to work). Replacing the executable does not update an already-running tmux server: preserve or finish important work, then restart that server at a planned time.
 
+## Moving to another multiplexer
+
+`moshi-hook mux migrate` rebuilds a multiplexer's groups, tabs and panes in another, then moves its agents:
+
+```sh
+moshi-hook mux migrate --from tmux --to herdr --dry-run
+moshi-hook mux migrate --from tmux --to herdr
+moshi-hook mux migrate --from herdr:work --to rex --group api
+```
+
+A multiplexer is `tmux`, `tmux:<server>`, `herdr`, `herdr:<session>`, `hc`, `hc:<session>` or `rex`. `--group` limits the run to a group by label or id, and repeats.
+
+The plan is printed first, then you pick which running programs to move and confirm before anything changes. `--yes` skips both, and is required without a terminal. An agent that is mid-turn or waiting for an answer is interrupted if you continue.
+
+Each agent is stopped on the source and resumed in its new pane only once it has exited, so one conversation never runs twice. Labels you set, directories, split sizes and the launch flags that matter (model, permission mode) come across. herdr-core has no pane geometry, so panes to or from it get default sizes.
+
+- The source layout stays in place; close it yourself when you are happy.
+- Each other running program is listed with its exact command. Tick it to stop it and start it in the new pane; otherwise it keeps running on the source and the new pane is a shell in the same directory. Programs move last, and only once the old one has exited. `--yes` leaves them all on the source. Pipelines, other users' processes and the migrate command itself are not offered, and environment variables set on the command line are not carried.
+- An agent whose session id is unknown, or that has no resume command, stays running on the source. An agent just moved can take a few seconds to report its session, so wait before moving it again.
+- Launch flags are the ones the agent started with. A model changed inside the session, or one since retired, is not updated.
+
 ## Host Easy Pair
 
 Easy Pair is the QR-based setup flow for SSH/Mosh host access and agent-hooks daemon pairing. Run it on the machine you want Moshi to connect to:
