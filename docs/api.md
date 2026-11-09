@@ -507,6 +507,13 @@ inline_visuals = true
 # off, behind counts are as of your own last fetch.
 #   moshi-hook set git-background-fetch on
 git_background_fetch = false
+# Let the Moshi app's Servers tab stream this machine's CPU, memory, network
+# and top programs, keeping its last 3 minutes of CPU, memory and network for
+# the graphs (about 0.25 ms of CPU every 2 s; the process walk runs only while
+# the tab watches). Applies at once, also to
+# a stream already running.
+#   moshi-hook set host-metrics off
+host_metrics = true
 # macOS only: run the bundled mata host so Moshi can stream and control
 # simulators and emulators. Applies after a daemon restart.
 #   moshi-hook set mata off
@@ -616,6 +623,7 @@ The first snapshot identifies the hook and its additive API capabilities:
       "workspaces.cycle",
       "approvals.answer",
       "events.watch.usage",
+      "events.watch.metrics",
       "events.doctor",
       "update.check",
       "update.apply",
@@ -696,10 +704,10 @@ connections. Without a session lookup, workspace trees use the loopback mux
 selection (Herdr by default); `context: true` enables loopback context pushes.
 
 ```jsonc
-{ "watch": { "workspaces": true, "agent": { "source": "claude", "session": "agent-session-id" }, "context": true, "usage": true } }
+{ "watch": { "workspaces": true, "agent": { "source": "claude", "session": "agent-session-id" }, "context": true, "usage": true, "metrics": true } }
 ```
 
-The gateway acks with `{"watching": {"workspaces": true, "agent": true, "context": true, "usage": true}}`
+The gateway acks with `{"watching": {"workspaces": true, "agent": true, "context": true, "usage": true, "metrics": true}}`
 and then pushes frames whenever their content changes (workspaces and context
 on a tick, agent status on a 250 ms tick, all deduped by JSON). The workspace
 tree rebuilds every 5 s at rest and every 1 s for 3 s after any hook event,
@@ -759,6 +767,45 @@ hide their usage UI. The list replaces the previous one:
     "hostName": "laptop", "capturedAt": "2026-09-25T03:00:00Z",
     "windows": [ { "label": "5h", "usedPercentage": 42, "resetsAt": "2026-09-25T06:00:00Z" } ]
 } ] }
+```
+
+`metrics: true` (capability `events.watch.metrics`; samples on macOS and Linux) pushes this
+machine's CPU, memory, load and network every 2 seconds, first about half a
+second after the ack. One sampler serves every socket. `moshi-hook serve` also
+samples unwatched (CPU, memory and network only, no process walk) and keeps
+the last 90 readings: a new watch gets them first as one
+`{"metricsHistory": {"intervalSeconds": 2, "cpu": [...], "memory": [...],
+"rxBytesPerSec": [...], "txBytesPerSec": [...]}}` frame (memory is used
+percent of total; oldest first, ending just before the watch's first metrics
+frame, which comes at once), so graphs open with the last 3 minutes. Where it
+can't sample, the ack says `"metrics": false`; when the host turned them off
+(`moshi-hook set host-metrics off`) it also says `"metricsDisabled": true`,
+and turning the switch off mid-stream ends it with a fresh ack saying the
+same. Each frame is complete and
+replaces the last; the daemon keeps no history, so graphs are the client's.
+`memory.used` is total minus available, so cache doesn't read as pressure;
+`buffers` and `cached` are Linux-only. `network` leaves out loopback, tunnels
+and container bridges. `programs` is the top three programs by CPU and by
+memory; processes sharing a name count as one program (`processes` says how
+many), a macOS app bundle names all its helpers, and `cpuPercent` is of one
+core, as `top` shows it. It is absent from a frame with no earlier reading to
+measure CPU against, and on macOS covers only the daemon user's processes:
+
+```jsonc
+{ "metrics": {
+    "at": "2026-11-07T03:00:00Z",
+    "info": { "os": "linux", "kernel": "7.0.0-38-generic", "cpuModel": "AMD Ryzen 7 8845HS" },
+    "uptimeSeconds": 2494740, "load": [7.64, 9.66, 15.08], "processes": 1047,
+    "cpu": { "percent": 15.5, "cores": [12.5, 8, 40.1] },
+    "memory": { "total": 92556054528, "used": 21045379072, "available": 71510675456,
+                "buffers": 2362232012, "cached": 41016937267,
+                "swapTotal": 60129542144, "swapUsed": 22870385459 },
+    "network": { "rxBytesPerSec": 9728, "txBytesPerSec": 22528,
+                 "interfaces": [ { "name": "eno1", "rxBytesPerSec": 4915, "txBytesPerSec": 6656 } ] },
+    "programs": {
+      "byCpu": [ { "name": "node", "processes": 4, "cpuPercent": 132.5, "memoryBytes": 1288490188 } ],
+      "byMemory": [ { "name": "postgres", "processes": 9, "cpuPercent": 2.1, "memoryBytes": 4294967296 } ] }
+} }
 ```
 
 A `pendingPrompt` question option is `{label, description, preview?}`.
@@ -1056,10 +1103,17 @@ OMP's Ask dialog opens its cursor on the recommended option, which an OMP
 when it does not and the form matches the hook-captured prompt (same
 `toolUseId`, questions and labels), the bridge takes it from there.
 
-Claude Code and OMP answers may carry free text instead (capability
+Claude Code, OMP and OmO answers may carry free text instead (capability
 `questions.text`): `{ "optionIndexes": [], "text": "Something else" }`. The
-bridge types it into the form's own text row, Claude's "Type something" or
-OMP's "Other (type your own)", flattened to one line and at most 4096 bytes.
+bridge types it into the form's own text row, Claude's "Type something", OMP's
+"Other (type your own)" or OmO's "Type your own answer...", flattened to one
+line and at most 4096 bytes. Saving OmO's text row drops the question's
+selections, so an OmO multi-select answer sends its option labels in the text.
+An OmO question may have no options, and then only text answers it.
+
+An OmO question the model did not wait for sits behind a widget above the
+composer. The bridge opens its form first, which needs an empty composer: a
+draft there returns 409 rather than being sent to the agent.
 A single-select answer is either an option or text; a multi-select answer may
 add text to its options. Text is refused with `400` when the visible question
 draws no such row; for Claude also for a preview question and for a
@@ -1240,7 +1294,10 @@ Enrolling the same key or name again replaces that device's entry, so a
 retry is safe. If no server is running enroll then runs
 `osewa service install --listen :<port>` (launchd or a systemd user unit,
 which survives reboots) and, if that leaves none running,
-`osewa server --daemon --listen :<port>`. A running server of the binary
+`osewa server --daemon --listen :<port>`. The daemon does the same a few
+seconds after it starts, on a host with an enrolled device and no server
+running, unless the service is the user's (below): a reboot takes a
+`--daemon` server with it. A running server of the binary
 in use, on the configured port, rereads its devices on every connection
 and is left alone; one running another build (another path with other
 content, a replaced or deleted file, or on macOS a binary changed after it
