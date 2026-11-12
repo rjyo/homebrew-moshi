@@ -894,9 +894,11 @@ one refresh to appear.
 discovered on disk: Claude Code `.claude/commands/*.md` (project) and
 `<config>/commands/*.md` (user, honoring a session-specific
 `CLAUDE_CONFIG_DIR`), Codex `$CODEX_HOME/prompts/*.md`, OpenCode
-`.opencode/command/*.md` plus its config-dir `command/*.md`, and Gemini/Qwen
-`commands/*.toml` (nested TOML directories namespace with `:`, e.g.
-`/git:commit`). Custom entries carry `scope: "project" | "user"` and a `path`,
+`.opencode/command/*.md` plus its config-dir `command/*.md`, Pi prompt
+templates `.pi/prompts/*.md` plus `$PI_CODING_AGENT_DIR/prompts/*.md` (direct
+children only; commands a Pi extension registers in code are not discoverable),
+and Gemini/Qwen `commands/*.toml` (nested TOML directories namespace with `:`,
+e.g. `/git:commit`). Custom entries carry `scope: "project" | "user"` and a `path`,
 never shadow a same-named built-in, and omit `openTerminalOnRun` because they
 expand to prompts that produce transcript rows. Custom-command discovery is
 best effort: a missing root or unresolved cwd drops the custom entries, never
@@ -907,7 +909,13 @@ skip common generated/vendor directories. Skill discovery reads `SKILL.md`
 frontmatter from the active agent's project and profile roots, including a
 session-specific `CLAUDE_CONFIG_DIR`, `$CODEX_HOME`, and `$GROK_HOME`. Project
 skills win name collisions over user and bundled skills. Codex skills use `$`;
-other currently supported skill surfaces use `/`. `truncated: true` means the
+other currently supported skill surfaces use `/`. Codex results also include
+the skills of plugins enabled in `$CODEX_HOME/config.toml`
+(`[plugins."<plugin>@<marketplace>"]`), read from the plugin's active version
+under `$CODEX_HOME/plugins/cache` and named `<plugin>:<skill>` (e.g.
+`mattpocock-skills:tdd`, inserted as `$mattpocock-skills:tdd`), with
+`scope: "user"`. A query that prefixes the part after `:` ranks as a prefix
+match. `truncated: true` means the
 result or bounded filesystem walk reached a limit and the client should refine
 `query`.
 
