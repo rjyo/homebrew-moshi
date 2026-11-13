@@ -1191,7 +1191,12 @@ answer a different question.
 
 Returns `200` with `{"ok": true, …}` once the keys are delivered. A changed,
 superseded, or already-answered approval returns `409`; a missing pane `422`;
-a daemon running without its TUI bridge `503`. The resolved state reaches
+a daemon running without its TUI bridge `503`. A `409` body carries a `code`
+next to `error`: `approval_changed` (the session's pending approval is another
+one or none) and `approval_gone` (answered or expired) mean the approval has
+settled, so a client can retire its card; `prompt_unverified` means it is
+still pending but the terminal did not show the expected prompt (not painted
+yet, or changed), so the card stays answerable. Older daemons send no `code`. The resolved state reaches
 clients as the next agentStatus frame (the `pendingApproval` field disappears
 and the status leaves `blocked`).
 
@@ -1518,6 +1523,33 @@ the session (without); `409` the live terminal changed agent or session; `422`
 the terminal kind cannot take injected text; `500` the pane vanished or the
 multiplexer command failed.
 
+Without a lookup, a session whose recorded end no later activity outlives
+goes only to a pane that shows that session now; otherwise it returns `409`
+with `"code": "session_ended"` before any input. A relayed call checks every
+recorded pane that way and returns `409` with `"code": "agent_not_running"`
+when it no longer runs the agent or shows another of its sessions. A
+multiplexer the check cannot read returns `503` (retryable). The same applies
+to `/v1/keys`, `/v1/questions/answer`, `/v1/plans/answer`, `/v1/rewind` and
+`/v1/paste`.
+
+### `POST /v1/agents/prompt`
+
+`/v1/prompt` addressed only by agent session: the same body and response,
+but `source` and `sessionId` are required, and a `pane`, `tab`, session
+lookup or `images` returns `400` before any input. The pane resolves as for
+a loopback `/v1/prompt`: Claude's live attachment and herdr's live mapping
+outrank the hook-recorded stamp. The pane it resolves (except one Claude's
+own registry supplied) is checked on every call, direct or relayed: an ended
+session returns `409` `session_ended`, a pane that no longer runs the agent
+or shows another of its sessions returns `409` `agent_not_running`, and a
+multiplexer the check cannot read returns `503`.
+
+It exists for relayed clients that require those checks. Older daemons
+answer the sealed call with the error code `unsupported` before any input:
+v0.4.54 seals it itself (the path is not on its relay allowlist); daemons
+older than that have no relayed calls, and the realtime server answers for
+them with the same code.
+
 ### `POST /v1/keys[?<session lookup>]`
 
 Injects a short sequence of named control/navigation keys (interrupt, mode
@@ -1529,6 +1561,8 @@ arrows, `Space`, `Home`/`End`, `PageUp`/`PageDn`, `BSpace`, `C-a`…`C-z`
 chords, and single printable characters; at most 8 per request, paced as
 separate terminal events. Free-form text is rejected — it belongs to
 `/v1/prompt`.
+Through the relay only `Escape` and `Enter` are accepted; any other key is
+`403` before input.
 
 ```jsonc
 // request

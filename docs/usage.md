@@ -180,7 +180,7 @@ An SSH shell often cannot open the login Keychain even while the daemon, which r
 | `MOSHI_HOOK_CONFIG_DIR` | Override the config dir for `config.toml` gateway settings. |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | Proxy usage-provider HTTP requests. On macOS, when these are unset, usage polling falls back to the active system HTTP/HTTPS proxy reported by `scutil --proxy`, including for launchd/Homebrew services. |
 | `CLAUDE_CONFIG_DIR` | Override the Claude Code profile used by hook install/status/uninstall; active hooked sessions also register this profile for Chat View, usage, and account labels. |
-| `CODEX_HOME` | Override the Codex home used for hook install/status/uninstall and usage collection. Session-log lifecycle monitoring and Chat View transcripts follow each Codex session's own `CODEX_HOME` (the hook reports it), so Codex sessions started under different homes all work. Keyring-backed Codex usage is read through Codex's local app-server; file-backed `auth.json` and OpenCode OAuth remain supported, as does Pi's "OpenAI Codex (ChatGPT Plus/Pro)" login (`$PI_CODING_AGENT_DIR/auth.json` or `~/.pi/agent/auth.json`); Pi's newer "Sign in with ChatGPT" login can't report quota, and neither can Codex API-key logins, which are skipped. The daemon's own `CODEX_HOME` is read at startup and is the fallback for sessions that have not reported a home yet. |
+| `CODEX_HOME` | Override the Codex home used for hook install/status/uninstall, and the default home for usage collection. Session-log lifecycle monitoring and Chat View transcripts follow each Codex session's own `CODEX_HOME` (the hook reports it), so Codex sessions started under different homes all work. Keyring-backed Codex usage is read through Codex's local app-server; file-backed `auth.json` and OpenCode OAuth remain supported, as does Pi's "OpenAI Codex (ChatGPT Plus/Pro)" login (`$PI_CODING_AGENT_DIR/auth.json` or `~/.pi/agent/auth.json`); Pi's newer "Sign in with ChatGPT" login can't report quota, and neither can Codex API-key logins, which are skipped. The daemon's own `CODEX_HOME` is read at startup and is the fallback for sessions that have not reported a home yet. |
 | `OPENCODE_CONFIG_DIR` | Override OpenCode global config/plugin dir for hook install/status/uninstall. |
 | `ANTIGRAVITY_CONFIG_DIR` | Override Antigravity's global `config` directory for hook install/status/uninstall. |
 | `OMP_PROFILE` / `PI_PROFILE` | Select the active named OMP profile (`OMP_PROFILE` takes precedence). |
@@ -194,8 +194,11 @@ An SSH shell often cannot open the login Keychain even while the daemon, which r
 | `XDG_STATE_HOME` / `XDG_CONFIG_HOME` / `XDG_RUNTIME_DIR` | Standard XDG dirs (Linux). |
 
 Claude profiles seen in hook events are discovered automatically, including
-their exact transcript paths, usage, and account identities. Discovery persists
-across daemon restarts.
+their exact transcript paths, usage, and account identities. Codex homes work
+the same way: every `CODEX_HOME` a Codex session ran under (for example a
+per-profile `~/.codex-work`) gets its usage polled with that home's own
+sign-in (`auth.json` or keyring), one card per account. An account signed in
+under two homes shows once. Discovery persists across daemon restarts.
 
 Usage collection is on by default: about once a minute the daemon calls each
 signed-in agent's account API (Claude, Codex, Kimi, Grok, Antigravity, coding
