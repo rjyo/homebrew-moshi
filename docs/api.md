@@ -1550,6 +1550,131 @@ v0.4.54 seals it itself (the path is not on its relay allowlist); daemons
 older than that have no relayed calls, and the realtime server answers for
 them with the same code.
 
+### Agent places: `POST /v1/agents/place/prompt`, `/v1/agents/place/reply`, `/v1/agents/inbox`
+
+These routes address an agent by where it runs, for clients that keep a target
+across the agent's sessions (Siri, Shortcuts). All three are POST and
+relayed. A daemon older than these routes answers the sealed call
+`unsupported`.
+
+A **place** is three things: the mux (the tree's `mux` selector), the agent
+kind, and the directory the session was launched in. The launch directory is
+`startCwd`, written once per session; state from older hooks falls back to
+`cwd`, and a pane with no session uses the pane's own directory. Agent tree
+rows (`MuxSnapshotTreeAgent.placeKey`) and inbox items carry its `placeKey`,
+an opaque string that starts with `pk1.`. Compare keys; never parse them. Two
+agents of one kind in one directory share a key.
+
+Both place routes take the session last seen there (`sessionId`, the hint)
+and, optionally, its `placeKey`. Without a `placeKey` nothing is followed.
+With one, the routes resolve in this order:
+
+1. **The hint itself**, with the checks `/v1/agents/prompt` runs. A tmux pane
+   taken from the hint's stamp counts only on the server that recorded it:
+   the hook records `$TMUX`'s server pid. On another server, or with no
+   server recorded (state from older hooks), the pane counts only when its
+   agent names the hint itself, not when hook state matched it there.
+2. **A pane takeover.** The hook records it on the old session
+   (`supersededBy`, with the new agent's pid and start stamp) when an agent
+   binds a pane whose previous agent exited. On tmux it records one only
+   within one server's life. The new agent must be that process, launched in
+   the same directory. On tmux both sessions must carry the same server pid.
+   On herdr and other drivers, which stamp no instance, the record is followed
+   only when no sibling (below) shared the place. When the recorded session
+   has since rotated (`/clear`, `/new`), its process's current session is
+   followed, as for the hint's own process.
+3. **The same process.** A live session of the hint's own agent process,
+   matched by pid and start stamp, is followed. This covers `/clear` and
+   `/new`, including a Codex `/new` that has no session id yet.
+4. **An agent started after the hint died**, once the hint's process is
+   gone. The daemon reads the process table once a minute. It records, for
+   each hook-recorded agent process (pid plus start stamp), the last read
+   that found it running and the first successful read that found it gone.
+   The death lies between the two: failed reads, a sleeping host or a stalled
+   daemon only widen that window; a later read that finds the process again
+   undoes the miss. A recorded session end, or the host's boot, also bounds
+   the death from above. An end stamp is never taken as activity: the hook
+   stamps it when another agent takes the pane over (no later than that
+   agent's start), which can be long after the death. The one agent at the
+   place that started after the window is followed.
+   - An agent that started before the hint's last sign of life is never
+     followed, even if the hint had sat idle since then.
+   - Two or more such agents, or one that started inside the window in which
+     the hint died, answer `409` `{"code":"ambiguous"}`. The exception is a
+     single agent in the hint's own tmux pane on the same server.
+   - Without a known death (no read saw the process go, no end recorded, no
+     reboot since), only an agent in the hint's own tmux pane on the same
+     server is followed; any other agent is ambiguous.
+   - If another agent of the kind, launched in the same directory by another
+     process, started before the hint's last sign of life and was still alive
+     then (by its last sighting, its miss or its end), any successor is
+     ambiguous. After
+     a reboot that brings back only the reviewer, that one agent is not the
+     hint's.
+
+A session id that only hook state matched to a pane (its stamp) does not
+count as the hint or as a successor's id. It counts only when the stamp was
+recorded on the same tmux server and its agent process still runs. The pane
+that is picked is checked again to run the agent before anything is typed.
+A mux, pane or agent process that can't be read answers `503` rather than
+narrowing the candidates.
+
+The other errors are the same as `/v1/agents/prompt`'s:
+
+- `404` when there is no state.
+- `409` `session_ended` or `agent_not_running`.
+- `503` when a mux or process can't be read.
+
+#### `POST /v1/agents/place/prompt`
+
+Takes `{source, sessionId, placeKey?, text, textMode?}`. Unknown fields are
+`400`; images, panes and session lookups are not accepted.
+
+Answers `{ok, source, sessionId, followed, newSession?}`. `sessionId` is the
+session the text went to. `newSession` is set (with `sessionId` `""`) when
+the agent there names no session yet.
+
+#### `POST /v1/agents/place/reply`
+
+Takes `{source, sessionId, placeKey?, maxChars?}`. It never types.
+
+Answers `{source, sessionId, followed, newSession?, status, turnEndedAt?,
+pending?, reply, replyCode?}`:
+
+- `status`: `working`, `blocked`, `idle` or `done`, from the trees Home
+  shows. `ended` means no agent runs at the place now; the hint's
+  conversation is read instead. Any resolution failure other than
+  `ambiguous` or an unreadable mux falls back to that.
+- `pending`: `approval`, `question` or `plan` while the agent waits on one.
+- `reply`: `{text, at, truncated?}`, the newest agent text without thinking,
+  read through the `/v2/transcripts` hub. The session is shared with Chat
+  View and lingers afterwards. `text` is markdown, cut to `maxChars` runes
+  (default and maximum 4000) at a paragraph or line, with an open code fence
+  closed.
+- `reply` is `null` with a `200` in these cases:
+  - the conversation loaded and holds no agent text;
+  - the session has no transcript yet;
+  - a `newSession` (it hasn't replied yet);
+  - with `replyCode: "not_recent"`, the pages read (the loaded tail plus up
+    to three older pages) hold no agent text, as after a long run of tool
+    calls.
+- A conversation that did not load within about 2.5 s is `503`
+  `{"code":"loading"}`. `503` `{"code":"busy"}` means the transcript stream
+  caps were reached. A hint with neither state nor a transcript is `404`.
+
+#### `POST /v1/agents/inbox`
+
+Takes `{maxItems?}`: default 32, maximum 64; an empty body is fine.
+
+Answers `{items, truncated?, partial?}`. `partial` means a running mux
+could not be read, so its agents are missing. Items are ordered blocked,
+then done and unseen, then working, then the rest; the newest change comes
+first within each group.
+
+Each item is `{placeKey?, mux, source, sessionId?, tabId?, paneId?, title?,
+project?, status?, statusChangedAt?, turnEndedAt?, seenAt?, unseen?,
+pending?}`. No transcript is read.
+
 ### `POST /v1/keys[?<session lookup>]`
 
 Injects a short sequence of named control/navigation keys (interrupt, mode
