@@ -14,7 +14,7 @@ powershell -ExecutionPolicy Bypass -c "irm https://getmoshi.app/install.ps1 | ie
 ```
 
 The PowerShell installer verifies the published ZIP checksum, installs without
-elevation into versioned per-user directories, and places a stable junction on
+elevation into versioned per-user directories, and puts a stable bin directory on
 the user `PATH`. See [windows.md](windows.md) for the beta support boundary.
 
 After step 2, supported agents route their hooks through `moshi-hook`: Claude Code, Codex, OpenCode, Gemini CLI, Antigravity, Cursor, Kimi, Qwen Code, Qoder CLI, Factory Droid, GitHub Copilot CLI, Amp, Devin CLI, Grok Build, OMP (Oh My Pi), Pi, and Hermes Agent. The daemon (`serve`) holds the WebSocket to Moshi and the local Unix socket that hooks talk to. Only one `serve` runs per user. A second one started from a terminal exits with "another moshi-hook serve is already running"; one started by launchd, systemd or Moshi Go (no terminal on stdin) waits instead and takes over when the running daemon exits, re-executing the binary it was started as with the lock held throughout, so a supervisor's KeepAlive/Restart never loops on the lock. Any serve without a terminal on stdin waits, supervised or not (`serve </dev/null &`, containers); pass `--exit-if-running` to get the error instead.

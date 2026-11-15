@@ -560,6 +560,11 @@ allow_other_users = false
 # localhost; this is not authentication. Prefer the CLI:
 #   moshi-hook set allowed-hosts moshi.example.com
 allowed_hosts = []
+# Exact browser origins (scheme://host[:port]) allowed besides the server's
+# own. A loopback page on another port, such as a local dev server, is
+# refused otherwise. Pages on these origins can drive the daemon:
+#   moshi-hook set allowed-origins http://127.0.0.1:3000
+allowed_origins = []
 
 [rex]
 # The Rex server the daemon (and `moshi-hook rex attach`) talks to when its
@@ -575,7 +580,7 @@ server = "default"
 Gateway HTTP is loopback-only and does not require `Authorization`. Clients reach it through SSH local forwarding. Two checks stand in for auth (`internal/localguard`):
 
 - A loopback connection is accepted only from a socket owned by the daemon's user (or root), looked up in the kernel's socket table (Linux `/proc/net/tcp{,6}`, macOS `net.inet.tcp.pcblist_n`; not yet on Windows). When the table can't name the owner (macOS 27 shows non-root callers only their own sockets), the daemon instead checks through libproc that one of its user's own processes holds the client end, and refuses the connection when none does; in that mode a root-owned client is refused too, since its sockets aren't visible. sshd's port forward, the web client, the desktop apps and `ssh -W` all connect as that user. `[gateway] allow_other_users = true` turns this off.
-- A request is refused with `403` when its `Host` is not loopback or in `allowed_hosts` (DNS rebinding), its `Origin` is present and not a loopback/allowed `http(s)` origin (cross-site pages, `null`), or it has no `Origin` and `Sec-Fetch-Site: cross-site` and is not a GET/HEAD navigation (embedding a gateway URL in a frame stays allowed; the framing page can't read it). `moshi-hook web` with a non-loopback `--listen` also accepts IP-literal Hosts and same-origin pages on them. Proxies in front of a guarded server (`moshi-hook web`, the `/hosts/<h>/` bridge) check the browser request themselves, then forward it with a loopback Host and without `Origin`/`Sec-Fetch-*`. Host/account auth remains limited to daemon-to-Moshi server calls that deliver pushes, usage, approvals, and WebSocket frames.
+- A request is refused with `403` when its `Host` is not loopback or in `allowed_hosts` (DNS rebinding), its `Origin` is present and is neither the request's own origin (the same loopback host and port as `Host`), a host in `allowed_hosts` on the same port as `Host` (or on its default port behind a proxy that rewrites `Host` to loopback), nor listed in `allowed_origins` (cross-site pages, `null`, and other local servers such as `http://localhost:3000`), or it has no `Origin` and `Sec-Fetch-Site: cross-site` or `same-site` and is not a GET/HEAD navigation (embedding a gateway URL in a frame stays allowed; the framing page can't read it). `moshi-hook web` with a non-loopback `--listen` also accepts IP-literal Hosts and same-origin pages on them. Proxies in front of a guarded server (`moshi-hook web`, the `/hosts/<h>/` bridge) check the browser request themselves, then forward it with a loopback Host and without `Origin`/`Sec-Fetch-*`. Host/account auth remains limited to daemon-to-Moshi server calls that deliver pushes, usage, approvals, and WebSocket frames.
 
 The HTTP gateway serves diff and bounded control actions for servers surfaced by discovery. Pull-only host inspection is intentionally not exposed here: `GET /v1/capabilities`, `GET /v1/servers`, and `GET /v1/sessions/context` return `404`. Use the SSH preflight CLI commands below instead.
 

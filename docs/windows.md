@@ -131,10 +131,13 @@ powershell -ExecutionPolicy Bypass -c "irm https://getmoshi.app/install.ps1 | ie
 ```
 
 The installer verifies the published GoReleaser ZIP against `checksums.txt`,
-installs it under `%USERPROFILE%\.moshi\packages\standalone\releases`, points
-`%LOCALAPPDATA%\Programs\Moshi Hook\bin` at the active version with a directory
-junction, adds that stable directory to the user `PATH`, and retains the three
-newest releases. It does not require elevation. Open a new PowerShell window,
+installs it under `%USERPROFILE%\.moshi\packages\standalone\releases`, hardlinks
+(or copies) the active version's executables into the real directory
+`%LOCALAPPDATA%\Programs\Moshi Hook\bin`, adds that stable directory to the user
+`PATH`, and retains the three newest releases. bin is not a junction: sshd logons
+refuse to traverse a junction a non-admin user created, which hid the daemon from
+the Moshi app over SSH. Older installs have that junction; rerunning the installer
+replaces it. It does not require elevation. Open a new PowerShell window,
 then run `moshi-hook install` and `moshi-hook service install`.
 
 Native Windows remains experimental, preview-only, and unsigned, so SmartScreen may require
