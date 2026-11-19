@@ -775,7 +775,7 @@ hide their usage UI. The list replaces the previous one:
 ```
 
 `metrics: true` (capability `events.watch.metrics`; samples on macOS and Linux) pushes this
-machine's CPU, memory, load and network every 2 seconds, first about half a
+machine's CPU, memory, load, network and disk space every 2 seconds, first about half a
 second after the ack. One sampler serves every socket. `moshi-hook serve` also
 samples unwatched (CPU, memory and network only, no process walk) and keeps
 the last 90 readings: a new watch gets them first as one
@@ -794,7 +794,21 @@ and container bridges. `programs` is the top three programs by CPU and by
 memory; processes sharing a name count as one program (`processes` says how
 many), a macOS app bundle names all its helpers, and `cpuPercent` is of one
 core, as `top` shows it. It is absent from a frame with no earlier reading to
-measure CPU against, and on macOS covers only the daemon user's processes:
+measure CPU against, and on macOS covers only the daemon user's processes.
+`disks` is free/used space per mounted drive, in bytes, re-read every 30
+seconds while watched (frames in between repeat the last reading). It is
+absent from frames before the watch's first reading lands (the frame handed
+over at once never has it; the next one usually does), on daemons before it,
+and where no drive could be read. Used percent
+is `used / (used + free)`, as `df` shows it: `free` is what a user can still
+write, so Linux's root-reserved blocks count in neither and `used + free` can
+fall short of `total`. Linux lists block devices and ZFS datasets once per
+device (bind mounts, snaps, container layers, `/run` but for removable drives
+under `/run/media`, `/boot/efi` and network
+shares left out; a container with none reports `/` alone); macOS lists the
+local volumes Finder shows (`/` and drives under `/Volumes`), where `used` is
+the whole APFS container's, as Finder counts it. `/` comes first, then by
+mount; at most 12:
 
 ```jsonc
 { "metrics": {
@@ -809,7 +823,9 @@ measure CPU against, and on macOS covers only the daemon user's processes:
                  "interfaces": [ { "name": "eno1", "rxBytesPerSec": 4915, "txBytesPerSec": 6656 } ] },
     "programs": {
       "byCpu": [ { "name": "node", "processes": 4, "cpuPercent": 132.5, "memoryBytes": 1288490188 } ],
-      "byMemory": [ { "name": "postgres", "processes": 9, "cpuPercent": 2.1, "memoryBytes": 4294967296 } ] }
+      "byMemory": [ { "name": "postgres", "processes": 9, "cpuPercent": 2.1, "memoryBytes": 4294967296 } ] },
+    "disks": [ { "mount": "/", "device": "/dev/nvme0n1p2", "fsType": "ext4",
+                 "total": 982820896768, "used": 412316860416, "free": 520446472192 } ]
 } }
 ```
 
