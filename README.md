@@ -62,6 +62,10 @@ brew uninstall moshi-hook
 brew untap rjyo/moshi
 ```
 
+## Other hook managers
+
+`moshi install` does not remove user-owned hooks. If another tool replaces the hook file wholesale (for example `rulesync generate`), run `moshi install` again afterwards.
+
 ## Reporting issues
 
 Email <support@getmoshi.app> or DM the team — this tap repo doesn't track issues.
