@@ -224,6 +224,15 @@ Grok Build SuperGrok / X Premium usage reads `$GROK_HOME/auth.json` (default
 remains owned by Grok: `moshi-hook` uses only a fresh OIDC access token and
 never uses, refreshes, or rewrites the refresh token.
 
+Antigravity usage reads the CLI's sign-in (the macOS Keychain item, else
+`~/.gemini/antigravity-cli/antigravity-oauth-token`) and asks Google's Code
+Assist backend (`daily-cloudcode-pa` and `cloudcode-pa`) for the same quota
+summary `agy /usage` shows. Each pool gets a five-hour and a weekly row, for
+example `Claude+GPT 5h` and `Claude+GPT 7d` for the limit Claude and GPT
+models share; models the summary doesn't cover, such as Gemini today, keep a
+per-family five-hour row (`Gemini 5h`). The token is used only while fresh and
+is never refreshed or rewritten.
+
 API-key coding plans show up as their own usage cards, whichever harness
 spends them (Pi, OpenCode, Claude Code, …):
 
