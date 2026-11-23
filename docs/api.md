@@ -489,6 +489,13 @@ suppress_push_while_unlocked = false
 # On by default.
 #   moshi-hook set suppress-push-without-mux off
 suppress_push_without_mux = true
+# Mute every agent session on this host: completions and errors publish
+# silently (inbox and Live Activities stay current); approvals and
+# `moshi-hook notify`/`ask` still notify.
+# Off by default. Applies to the next event. One session can be muted on its
+# own from the app (POST /v1/agents/mute).
+#   moshi-hook set mute-push on
+mute_push = false
 # Install the moshi-visuals skill next to the Claude Code and Codex hooks, at
 # <claude config dir>/skills/moshi-visuals/SKILL.md and
 # <codex home>/skills/moshi-visuals/SKILL.md, so those agents can answer with
@@ -629,6 +636,7 @@ The first snapshot identifies the hook and its additive API capabilities:
       "approvals.answer",
       "events.watch.usage",
       "events.watch.metrics",
+      "agents.mute",
       "events.doctor",
       "update.check",
       "update.apply",
@@ -866,6 +874,11 @@ presented alongside this list, but must retain their agent-native
 prefix (`/` or `$`) and should not overwrite a built-in command with the same
 name.
 
+A Pi session's list also carries the commands its extensions registered at
+runtime (`pi.getCommands()`, such as pi-goal's `/goal`), which its hook
+reports whenever they change. Like the catalog's, they run in the TUI
+(`openTerminalOnRun: true`), and never replace a catalog command.
+
 ### `GET /v1/composer/suggestions?source=<agent>&session=<id>&kind=commands|files|skills[&query=<text>&limit=<n>]`
 
 Returns the host-owned autocomplete data for one live Chat View session. This
@@ -917,7 +930,8 @@ discovered on disk: Claude Code `.claude/commands/*.md` (project) and
 `CLAUDE_CONFIG_DIR`), Codex `$CODEX_HOME/prompts/*.md`, OpenCode
 `.opencode/command/*.md` plus its config-dir `command/*.md`, Pi prompt
 templates `.pi/prompts/*.md` plus `$PI_CODING_AGENT_DIR/prompts/*.md` (direct
-children only; commands a Pi extension registers in code are not discoverable),
+children only; commands a Pi extension registers in code come from its hook, as
+in the `agentStatus` list),
 and Gemini/Qwen `commands/*.toml` (nested TOML directories namespace with `:`,
 e.g. `/git:commit`). Custom entries carry `scope: "project" | "user"` and a `path`,
 never shadow a same-named built-in, and omit `openTerminalOnRun` because they
@@ -1143,6 +1157,22 @@ An OmO question may have no options, and then only text answers it.
 An OmO question the model did not wait for sits behind a widget above the
 composer. The bridge opens its form first, which needs an empty composer: a
 draft there returns 409 rather than being sent to the agent.
+
+Pi asks through third-party extensions, and the Pi hook names the one whose
+form is open as the `pendingPrompt`'s `form`: `rpiv`
+(`@juicesharp/rpiv-ask-user-question`'s `ask_user_question`), `pi-ask-user`
+or `pi-agent-extensions` (each registers `ask_user`), `pi-example` (Pi's
+example `question` / `questionnaire`), or `pi-plan-mode` (`plan_mode_question`).
+A question that ends in the form's free-text row carries `formOther: true`,
+and only those take `text`; a `pi-ask-user` or `pi-agent-extensions` question
+without options is Pi's own input box and takes text alone. The bridge
+answers these forms only when the request matches the hook-captured prompt,
+and only on the untouched first question. `rpiv` and `pi-ask-user` take
+multi-select answers; `pi-ask-user`'s typed answer replaces its selections,
+so it takes options or text. `pi-plan-mode`'s questionnaire, an `rpiv`
+question with previews and a `pi-ask-user` batch page without options return
+`400`: answer those in the terminal.
+
 A single-select answer is either an option or text; a multi-select answer may
 add text to its options. Text is refused with `400` when the visible question
 draws no such row; for Claude also for a preview question and for a
@@ -1200,6 +1230,13 @@ dialog through the daemon's TUI bridge (capability `approvals.answer`). The
 frame. The bridge re-verifies the visible screen before typing — the same
 verification the phone's remote decision path runs — so a stale card cannot
 answer a different question.
+
+Pi has no approvals of its own: its hook turns an extension's
+`ctx.ui.confirm` dialog (pi-automode's permission ask, pi-goal's "Replace
+goal?") into an approval whose message is the dialog's title. Approve presses
+Enter on its Yes row; deny presses Esc, which the dialog reports as No. Any
+other blocking extension dialog only marks the session blocked ("Pi is waiting
+for input"), with nothing to answer from the app.
 
 ```jsonc
 {
@@ -1694,7 +1731,22 @@ first within each group.
 
 Each item is `{placeKey?, mux, source, sessionId?, tabId?, paneId?, title?,
 project?, status?, statusChangedAt?, turnEndedAt?, seenAt?, unseen?,
-pending?}`. No transcript is read.
+pending?, muted?, mutedAt?}`. No transcript is read.
+
+### `POST /v1/agents/mute`
+
+Capability `agents.mute`. Takes `{source, sessionId, muted}` (`muted`
+required) and answers `{muted, mutedAt}`. `mutedAt` is when the session's
+mute last changed, in host Unix seconds, and only moves forward; tree rows
+and inbox items carry it too, so a client holding its own change can tell a
+tree taken after it from an older one. A muted session's `task_complete` and `error` events still
+publish, so the inbox and Live Activities stay current, but as silent
+events with no banner; approvals and `moshi-hook notify`/`ask` keep theirs. The mark is stored in the
+session's hook state on this host, so every device sees it as `muted` on
+agent tree rows and inbox items. It lasts as long as the session id: a new
+session (and agents that change id on `/clear`) starts unmuted. Only sessions
+the hooks recorded can be muted (`404` otherwise). Relayed. To mute every
+session on the host, use the `mute-push` setting.
 
 ### `POST /v1/keys[?<session lookup>]`
 
@@ -1980,7 +2032,7 @@ Opens a local WebSocket stream for a live agent transcript. New clients should p
 
 Server messages are JSON objects with `type` (`backlog`, `older`, `append`, `resumed`, `reset`, `subagents`, or `error`), `source`, physical `line` numbers, and raw JSONL rows for client-side rendering. Clients can request older rows with `{"type":"older","beforeLine":123,"limit":50}`.
 
-**Subagents** (capability `transcripts.subagents`; Claude and Qoder, which share Claude's on-disk layout, and OmO and OpenCode, below). Claude Code writes each subagent's rows to `<session>/subagents/agent-<id>.jsonl` beside the parent JSONL, never into it. A parent stream opened with `subagents=1` sends one `subagents` message right after the opening `backlog` (or `resumed` on reconnect), then another whenever the list or any status changes:
+**Subagents** (capability `transcripts.subagents`; Claude and Qoder, which share Claude's on-disk layout, and OmO, OpenCode and Pi with pi-subagents, below). Claude Code writes each subagent's rows to `<session>/subagents/agent-<id>.jsonl` beside the parent JSONL, never into it. A parent stream opened with `subagents=1` sends one `subagents` message right after the opening `backlog` (or `resumed` on reconnect), then another whenever the list or any status changes:
 
 ```json
 {"source":"claude","type":"subagents","subagents":[
@@ -1997,6 +2049,8 @@ Every source may add, each omitted when unknown: `model` (the model the agent ru
 
 **OpenCode** (1.x) runs each `task` tool call as a child session on the same server, and the parent's `task` tool part names it (`state.metadata.sessionId`) from the moment it starts. The list is read from the parent's own messages, so it needs no extra OpenCode endpoint and works through the plugin's relay: `agentId` is the child session id (`ses_…`), `toolUseId` the part's `callID` (the `task` card's id), `name` the task's description, `agentType` its `subagent_type`, `model` `providerID/modelID`, `durationMs` and `result` (the `<task_result>` text, or the error) once it ends. `status` maps the part: `pending`/`running` → `running`, `completed`, `error` → `failed`, or `stopped` when the user interrupted it (`Tool execution aborted`, `Task cancelled`). A child resumed with `task_id` keeps its latest call. `hidden` turns true 30 s after a task ends. Only direct children are listed (OpenCode's default depth). `agent=ses_…` streams the child session's messages through the same server, with the same protocol as the parent, and only for a child the parent's messages name; any other id gets an `error` message after the upgrade rather than `404`, since checking needs the live server. OpenCode 2.x is not covered yet: its relay serves only the sessions it owns, which excludes children.
 
+**Pi** with `@tintinweb/pi-subagents` (0.26+): each agent is its own Pi session whose header's `parentSession` is the parent's file. The list merges what the Moshi extension last reported from the extension's `subagents:*` events (running agents, with their session file once Pi has created it) with the parent's `subagents:record` entries (finished agents; what survives a reload or restart). Only the session's own top-level agents are listed, not ones another agent or a workflow owns. `agentId` is pi-subagents' agent id, `toolUseId` the parent's `Agent` tool call (from its result's `details.agentId`), `name` the agent's description, `agentType` its type, `model` the model it runs on, and `durationMs` and `result` (its answer, or the error) once it ends. `status` maps pi-subagents' status: `queued`/`running`/`steered` → `running`, `completed`, `error` → `failed`, `aborted` → `killed`, `stopped`. `hidden` turns true 30 s after an agent ends. `agent=<id>` streams the child's session JSONL (Pi format), and only when that file's header names this parent; any other id is `404`. An agent kept in memory only (`persist_session: false`) is listed but cannot be opened.
+
 `agent=<agentId>` opens that subagent's own transcript instead of the parent's, with the same protocol (`limit`, `cursor`, `older`, Claude row filter). Its rows carry `isSidechain: true`; forks begin with a `fork-context-ref` row pointing at the parent context. Cursors are bound to the agent, so a parent cursor falls back to a full `backlog`. An invalid id, or `agent` on a source without subagents, is `400`; an unknown agent is `404`. `/v1/transcripts/blob` accepts the same `agent` parameter for images in subagent rows.
 
 The optional `limit` query parameter shrinks the opening `backlog` page, which matters on long-haul links where the default 200-row page costs several round trips of TCP slow start. It counts **kept source rows** — the physical rows the daemon streams — not rendered chat messages; several source rows routinely collapse into one message, so a client asking for 30 rows should expect noticeably fewer. Values that are missing, unparseable, non-positive, or above the 200-row default are ignored and produce exactly the default page, so older clients are unaffected. `startLine`, `totalLines`, and `hasMore` stay physical and correct, so paging back with `older` converges on the same history as an unlimited backlog. `limit` applies to every `backlog` message on the connection, including the one re-sent after a `reset`.
@@ -2009,7 +2063,7 @@ A `cursor` on an `append` is the **commit marker for the entire burst**, includi
 
 ### `GET /v2/transcripts?session=<id>&source=<source>[&agent=<agentId>][&limit=<n>][&resume=1]`
 
-WebSocket stream of **reduced chat messages** (capability `transcripts.v2`; design in `docs/internal/transcripts-v2.md`, wire types `gatewayapi.TranscriptV2ServerMessage` / `TranscriptV2ClientMessage`). The daemon runs the transcript reducer (`transcript/`, the Go port of app-ios `lib/transcript`) and streams its output, so clients render messages instead of reducing raw rows. `session`, `source` and `agent` mean the same as for `/v1/transcripts`, and errors before the upgrade are identical (`400` bad session/source/agent, `404` not found, `429` too many streams, `500`; an OpenCode `agent` that isn't a child of the session fails after the upgrade, as on v1). `limit` is the first snapshot's size in **messages** (default 200, max 2000; reconnecting clients ask for what they had loaded). `cursor`, `subagents` and the v1 row `limit` do not apply: Claude, Qoder, OmO and OpenCode parent streams always carry the subagents list.
+WebSocket stream of **reduced chat messages** (capability `transcripts.v2`; design in `docs/internal/transcripts-v2.md`, wire types `gatewayapi.TranscriptV2ServerMessage` / `TranscriptV2ClientMessage`). The daemon runs the transcript reducer (`transcript/`, the Go port of app-ios `lib/transcript`) and streams its output, so clients render messages instead of reducing raw rows. `session`, `source` and `agent` mean the same as for `/v1/transcripts`, and errors before the upgrade are identical (`400` bad session/source/agent, `404` not found, `429` too many streams, `500`; an OpenCode `agent` that isn't a child of the session fails after the upgrade, as on v1). `limit` is the first snapshot's size in **messages** (default 200, max 2000; reconnecting clients ask for what they had loaded). `cursor`, `subagents` and the v1 row `limit` do not apply: Claude, Qoder, OmO, OpenCode and Pi parent streams always carry the subagents list.
 
 All viewers of one `(source, session, agent)` share one reducer, fed by a single v1 stream the daemon opens to itself in process. It starts with the first viewer and lingers 60 s after the last one leaves, so a reopen is instant. The v1 stream limit (8) counts these shared sessions, not viewers: admission reserves the new session's slot before the upgrade (evicting lingering sessions if needed, `429 too many transcript streams` otherwise), and the session keeps it, reconnects included, until it is released. v2 viewers have their own daemon-wide cap of 32 (`429 too many transcript viewers`).
 
