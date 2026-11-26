@@ -309,6 +309,7 @@ Publish an agent event.
   "projectName": "foo",
   "tmuxSession": "main",
   "tmuxWindow": "0",
+  "tmuxWindowName": "discovery",          // the window's tmux name, read at publish; server caps it at 128 chars
   "modelName": "claude-opus-4-7",
   "toolName": "Bash",
   "pendingActionId": "act_…",            // present when a decision is required
@@ -317,6 +318,8 @@ Publish an agent event.
   "accountId": "claude:plan_max"         // <source>:<id>; omit if signed out or usage collection is off
 }
 ```
+
+This plaintext shape is what hosts without E2EE send. With E2EE on, every content field (title, message, projectName, the tmux/herdr/mux location including `tmuxWindowName`, …) travels sealed inside `enc`, and only the routing fields (`eventId`, `source`, `eventType`, `sessionId`, `category`, `hostId`, `pendingActionId`, `expiresAt`, `silent`) stay in the clear.
 
 Returns `200 OK` with `{}`. `hostId` in the URL is authoritative.
 
@@ -2070,7 +2073,7 @@ The optional `cursor` resumes a previously committed transcript checkpoint. Curs
 
 A `cursor` on an `append` is the **commit marker for the entire burst**, including preceding cursorless fragments. Buffer those fragments and reduce them only after the commit marker arrives. On disconnect, discard uncommitted fragments and resume from the last committed cursor. Never use `totalLines` as a checkpoint: every fragment may report the final total before all rows have arrived. Persist the cursor and corresponding reducer inputs together. `resumed` completes catch-up without changing the oldest loaded boundary or older-page availability. `older` responses never advance the forward cursor. Materialized `backlog` responses carry a cursor; virtual pending rows do not. A cursorless backlog is still authoritative and requires a full refresh. Mutable OpenCode rows can invalidate an earlier prefix, so an active-turn reconnect may legitimately require a full refresh.
 
-### `GET /v2/transcripts?session=<id>&source=<source>[&agent=<agentId>][&limit=<n>][&resume=1]`
+### `GET /v2/transcripts?session=<id>&source=<source>[&agent=<agentId>][&limit=<n>][&resume=1][&prompts=1]`
 
 WebSocket stream of **reduced chat messages** (capability `transcripts.v2`; design in `docs/internal/transcripts-v2.md`, wire types `gatewayapi.TranscriptV2ServerMessage` / `TranscriptV2ClientMessage`). The daemon runs the transcript reducer (`transcript/`, the Go port of app-ios `lib/transcript`) and streams its output, so clients render messages instead of reducing raw rows. `session`, `source` and `agent` mean the same as for `/v1/transcripts`, and errors before the upgrade are identical (`400` bad session/source/agent, `404` not found, `429` too many streams, `500`; an OpenCode `agent` that isn't a child of the session fails after the upgrade, as on v1). `limit` is the first snapshot's size in **messages** (default 200, max 2000; reconnecting clients ask for what they had loaded). `cursor`, `subagents` and the v1 row `limit` do not apply: Claude, Qoder, OmO, OpenCode, Pi and Antigravity parent streams always carry the subagents list.
 
@@ -2109,12 +2112,15 @@ Every message the daemon sends comes with an **etag**: the first 16 characters o
 
 **Resume.** A client that persisted its messages connects with `resume=1` and sends, as its first frame within 2 s, `{"type":"resume","window":[{"id":"…","etag":"…"},…]}`: its cached server messages, oldest first, local echoes excluded, at most 2000. The daemon aligns that window at its oldest id (paging the shared session back for up to 2 s when that id is not loaded yet) and answers `resumed`: a patch against the client's window (ids that are gone are removed, messages whose etag differs or is missing are re-sent, new ones are inserted, `after` anchors inside the window) plus every field a snapshot carries. After it the connection continues with ordinary patches. When the window cannot be aligned (its oldest id is unknown, paging cannot reach it, it is empty, too large or has duplicate ids) the answer is an ordinary `snapshot`; so it is when no resume frame arrives within 2 s, or the first frame is something else (which is then handled normally).
 
+**Prompt outline** (`prompts=1`, capability `transcripts.v2.prompts`; design in `docs/internal/transcripts-v2.md#prompt-outline`). The whole transcript's prompts, for a minimap or table of contents that lists every prompt however little history the viewer has loaded. Once the daemon has read the history, `snapshot` and `resumed` carry `"prompts":[{"id":"p1","text":"first line","createdAt":1764547200000},…]` (oldest first), and a `patch` carries the whole list again whenever it changed (a new prompt, a rewind). `id` is the prompt's `user-text` message id in the stream; `text` is its first line (a shell prompt's command), cut to 160 runes; `createdAt` is the message's. Absent means not read yet: fall back to the loaded messages. After a reset (a new transcript file, a rewrite) the list is `[]` until the new history is read. A reopen after the shared session expired gets the transcript's last list in its first frame. Viewers without `prompts=1` never get the field. To jump to a prompt that is not loaded, send `older` with `until`: the page then reaches back to that message (at most 2000 messages; send it again if it fell short).
+
 Client frames:
 
 ```jsonc
 {"type":"resume","window":[{"id":"…","etag":"…"}]} // first frame of a resume=1 connection only
 {"type":"ping"}                     // keepalive; ignored
 {"type":"older","limit":75}         // limit 0 = 75; max 2000
+{"type":"older","until":"p1"}       // transcripts.v2.prompts: back to message p1 (limit if it never loads)
 {"type":"rewind","messageId":"…"}   // Claude /rewind: hide this prompt and after, for every viewer;
                                     // durable (survives reconnects and daemon restarts); an id not loaded
                                     // yet is hidden when its page loads; a no-op for engines that cannot rewind
